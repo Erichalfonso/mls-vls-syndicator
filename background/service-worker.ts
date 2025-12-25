@@ -25,9 +25,19 @@ const state: AgentState = {
   actionHistory: []
 };
 
-// Open side panel when extension icon is clicked
-chrome.action.onClicked.addListener((tab) => {
-  chrome.sidePanel.open({ windowId: tab.windowId });
+// Open side panel when extension icon is clicked (tab-specific)
+chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab.id) return;
+
+  // Open side panel for this specific tab only
+  await chrome.sidePanel.open({ tabId: tab.id });
+
+  // Set the panel to be tab-specific (not global)
+  await chrome.sidePanel.setOptions({
+    tabId: tab.id,
+    path: 'popup/popup.html',
+    enabled: true
+  });
 });
 
 // Listen for messages from popup
