@@ -71,10 +71,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const screenshot = await captureScreenshot();
         sendResponse({ success: true, data: screenshot });
       }
-      else if (request.type === 'get_file') {
-        const fileData = await getFileFromNativeHost(request.path);
-        sendResponse({ success: true, data: fileData });
-      }
     } catch (error) {
       sendResponse({
         success: false,
@@ -604,24 +600,6 @@ function updateStatus(currentAction: string, progress: string, running: boolean 
       // Ignore errors (overlay might not be loaded)
     });
   }
-}
-
-async function getFileFromNativeHost(filepath: string): Promise<any> {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendNativeMessage(
-      'com.claude.browser_agent',
-      { type: 'getFile', path: filepath },
-      (response) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-        } else if (response && response.data) {
-          resolve(response);
-        } else {
-          reject(new Error('Failed to get file from native host'));
-        }
-      }
-    );
-  });
 }
 
 function wait(ms: number): Promise<void> {

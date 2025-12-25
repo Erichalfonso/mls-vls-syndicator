@@ -4,21 +4,23 @@ AI-powered browser automation using Claude's vision and reasoning capabilities. 
 
 ## Features
 
-- ✅ **Natural language commands** - "Upload my resume to this job application"
-- ✅ **Vision + reasoning** - Screenshots page, Claude decides next action
-- ✅ **Local file access** - Native messaging lets it read files from your computer
-- ✅ **File uploads** - Injects files directly, bypassing file picker dialogs
-- ✅ **Undetectable** - Runs inside your real browser, no bot flags
-- ✅ **Full automation** - Click, type, scroll, navigate, upload
+- ✅ **Natural language commands** - "Fill out this login form with my credentials"
+- ✅ **Vision + reasoning** - Screenshots page, Claude Opus 4.5 decides next action
+- ✅ **Extended thinking** - 5000 token reasoning budget for complex tasks
+- ✅ **DOM inspection** - Sees all available buttons, inputs, and links
+- ✅ **Smart error recovery** - Console log debugging when things fail
+- ✅ **Persistent side panel** - Stays open while browsing
+- ✅ **Full automation** - Click, type, scroll, navigate, file uploads
+- ✅ **No setup required** - Install and go!
 
 ## Demo Commands
 
 ```
-"Fill out this form with data from C:\Users\erich\data.txt"
-"Find all product prices and save to a file"
-"Upload my resume from Downloads folder"
-"Click through this checkout process"
-"Navigate to Google and search for 'AI agents'"
+"Login with username 'john@example.com' and password 'mypassword'"
+"Fill out this contact form with my information"
+"Click on 'Add to Cart' and proceed to checkout"
+"Navigate to the pricing page and click on the Pro plan"
+"Find the file upload button and click it for me"
 ```
 
 ---
@@ -47,46 +49,7 @@ This creates the `dist/` folder with the built extension.
 3. Click "Load unpacked"
 4. Select the `C:\Users\erich\claude-browser-agent\dist` folder
 
-### 4. Get Your Extension ID
-
-After loading, you'll see your extension listed with an ID like:
-```
-abcdefghijklmnopqrstuvwxyz123456
-```
-
-Copy this ID!
-
-### 5. Set Up Native Messaging
-
-#### Update the manifest:
-Edit `native-host\com.claude.browser_agent.json`:
-```json
-{
-  "name": "com.claude.browser_agent",
-  "description": "Native messaging host for Claude Browser Agent",
-  "path": "C:\\Users\\erich\\claude-browser-agent\\native-host\\host.py",
-  "type": "stdio",
-  "allowed_origins": [
-    "chrome-extension://YOUR_EXTENSION_ID_HERE/"
-  ]
-}
-```
-
-Replace `YOUR_EXTENSION_ID_HERE` with the ID you copied.
-
-#### Register with Windows:
-
-Create a registry file `register.reg`:
-```reg
-Windows Registry Editor Version 5.00
-
-[HKEY_CURRENT_USER\Software\Google\Chrome\NativeMessagingHosts\com.claude.browser_agent]
-@="C:\\Users\\erich\\claude-browser-agent\\native-host\\com.claude.browser_agent.json"
-```
-
-Double-click `register.reg` to add to registry.
-
-### 6. Add Your Claude API Key
+### 4. Add Your Claude API Key
 
 1. Click the extension icon in Chrome
 2. Click the ⚙️ settings button
@@ -109,7 +72,7 @@ Message: Hello!"
 ```
 
 ```
-"Upload the file C:\Users\erich\Documents\resume.pdf to the file input on this page"
+"Click the file upload button and I'll select my resume"
 ```
 
 ```
@@ -146,12 +109,9 @@ claude-browser-agent/
 ├── content/                   # Page interaction
 │   ├── content.ts            # Message handler
 │   ├── actions.ts            # Click, type, scroll, upload
-│   └── screenshot.ts         # Screenshot capture
-│
-├── native-host/               # File system access
-│   ├── host.py               # Python messaging host
-│   ├── com.claude.browser_agent.json
-│   └── native-host.log       # Logs
+│   ├── screenshot.ts         # Screenshot capture
+│   ├── dom-inspector.ts      # Page element detection
+│   └── overlay.ts            # Status overlay
 │
 └── dist/                      # Built extension (after npm run build)
 ```
@@ -196,14 +156,12 @@ What's the next action? Respond with JSON:
 ### File Upload Flow
 
 ```
-1. User says: "Upload resume from Downloads"
+1. User says: "Click the upload button for my resume"
 2. Agent identifies file input: <input type="file">
-3. Calls native host: getFile("C:\\Users\\erich\\Downloads\\resume.pdf")
-4. Native host returns base64 encoded file
-5. Content script creates File object from base64
-6. Injects into input.files using DataTransfer API
-7. Triggers change event
-8. ✅ File uploaded without opening file picker dialog!
+3. Agent clicks the file input
+4. Standard browser file picker opens
+5. User selects their file
+6. ✅ File ready to upload!
 ```
 
 ---
@@ -226,10 +184,9 @@ After rebuilding:
 
 ### Debugging
 
-- **Popup**: Right-click extension icon → "Inspect popup"
+- **Side panel**: Right-click extension icon → "Inspect"
 - **Background**: `chrome://extensions/` → "Inspect views: service worker"
 - **Content script**: F12 on any page, check Console
-- **Native host**: Check `native-host/native-host.log`
 
 ---
 
@@ -264,13 +221,6 @@ await wait(1500); // Milliseconds between actions
 
 ## Troubleshooting
 
-### "No such native messaging host"
-
-- Check registry entry points to correct path
-- Ensure `allowed_origins` has your extension ID
-- Make sure Python is installed and in PATH
-- Check `native-host.log` for errors
-
 ### "Failed to capture screenshot"
 
 - Extension needs `activeTab` permission (should be in manifest)
@@ -296,7 +246,7 @@ await wait(1500); // Milliseconds between actions
 - Only works on `http://` and `https://` pages
 - Cannot interact with Chrome internal pages (`chrome://`)
 - Screenshot is visible viewport only (not full page)
-- Native messaging requires manual registry setup
+- File uploads require user to manually select files from the file picker
 
 ---
 
@@ -321,13 +271,14 @@ await wait(1500); // Milliseconds between actions
 - Chrome Manifest V3
 - Webpack 5
 
-**Backend:**
-- Claude API (Anthropic)
-- Python native messaging
+**AI:**
+- Claude Opus 4.5 (Anthropic)
+- Extended Thinking (5000 tokens)
 
 **APIs:**
 - Chrome Extensions API
 - Chrome Tabs API
+- Chrome Side Panel API
 - Claude Messages API
 
 ---
@@ -341,10 +292,9 @@ MIT
 ## Support
 
 For issues, check:
-1. `native-host/native-host.log` (file access errors)
-2. Chrome console (F12) on the page
-3. Extension service worker console (`chrome://extensions/`)
-4. Popup console (right-click icon → Inspect)
+1. Chrome console (F12) on the page
+2. Extension service worker console (`chrome://extensions/`)
+3. Side panel console (right-click extension icon → Inspect)
 
 ---
 

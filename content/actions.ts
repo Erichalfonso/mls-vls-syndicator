@@ -132,44 +132,16 @@ async function uploadFile(selector: string, filepath: string): Promise<void> {
     throw new Error(`File input not found: ${selector}`);
   }
 
-  // Request file from native host
-  const fileData = await new Promise<any>((resolve, reject) => {
-    chrome.runtime.sendMessage(
-      {
-        type: 'get_file',
-        path: filepath
-      },
-      (response) => {
-        if (response.success) {
-          resolve(response.data);
-        } else {
-          reject(new Error(response.error || 'Failed to get file'));
-        }
-      }
-    );
-  });
+  // Scroll to the file input to make it visible
+  input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  await wait(500);
 
-  // Convert base64 to Blob
-  const byteCharacters = atob(fileData.data);
-  const byteNumbers = new Array(byteCharacters.length);
-  for (let i = 0; i < byteCharacters.length; i++) {
-    byteNumbers[i] = byteCharacters.charCodeAt(i);
-  }
-  const byteArray = new Uint8Array(byteNumbers);
-  const blob = new Blob([byteArray], { type: fileData.mimeType });
+  // Click the file input to open the file picker
+  // User will manually select the file - this is the consumer-friendly approach
+  input.click();
 
-  // Create File object
-  const file = new File([blob], fileData.filename, { type: fileData.mimeType });
-
-  // Create DataTransfer and set it on input
-  const dataTransfer = new DataTransfer();
-  dataTransfer.items.add(file);
-  input.files = dataTransfer.files;
-
-  // Trigger change event
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-
-  console.log(`Uploaded file to ${selector}: ${fileData.filename}`);
+  console.log(`Opened file picker for: ${selector}`);
+  console.log(`Note: Please select your file when the dialog opens`);
 }
 
 function wait(ms: number): Promise<void> {
