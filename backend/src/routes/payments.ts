@@ -8,10 +8,12 @@ import Stripe from 'stripe';
 const router = express.Router();
 const prisma = new PrismaClient();
 
-// Initialize Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2024-12-18.acacia'
-});
+// Initialize Stripe (optional - only if API key is provided)
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: '2024-12-18.acacia'
+    })
+  : null;
 
 // Pricing configuration
 const PRICING_PLANS = {
@@ -38,6 +40,13 @@ const PRICING_PLANS = {
 // POST /api/payments/create-checkout - Create Stripe checkout session
 router.post('/create-checkout', authenticateToken, async (req: AuthRequest, res) => {
   try {
+    if (!stripe) {
+      return res.status(503).json({
+        success: false,
+        error: 'Payment processing is not configured'
+      });
+    }
+
     const { plan } = req.body;
 
     if (!plan || !PRICING_PLANS[plan as keyof typeof PRICING_PLANS]) {
@@ -191,6 +200,13 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 // GET /api/payments/portal - Get customer portal URL
 router.get('/portal', authenticateToken, async (req: AuthRequest, res) => {
   try {
+    if (!stripe) {
+      return res.status(503).json({
+        success: false,
+        error: 'Payment processing is not configured'
+      });
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: req.userId }
     });

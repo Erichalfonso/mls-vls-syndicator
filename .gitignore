@@ -8,3 +8,7 @@ dist/
 *~
 .vscode/
 .idea/
+
+# Database files
+*.db
+*.db-journal

@@ -5,8 +5,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 model User {
@@ -68,11 +68,11 @@ model Listing {
   city        String?
   state       String?
   zipCode     String?  @map("zip_code")
-  price       Decimal? @db.Decimal(12, 2)
+  price       Float?
   bedrooms    Int?
-  bathrooms   Decimal? @db.Decimal(3, 1)
+  bathrooms   Float?
   squareFeet  Int?     @map("square_feet")
-  description String?  @db.Text
+  description String?
   listingData Json?    @map("listing_data") // Full listing details
 
   // Upload status
@@ -80,8 +80,8 @@ model Listing {
   uploadResult Json?     @map("upload_result") // Error messages, success confirmation
   uploadedAt   DateTime? @map("uploaded_at")
 
-  // Image URLs
-  imageUrls   String[]  @map("image_urls")
+  // Image URLs (stored as JSON in SQLite)
+  imageUrls   String?  @map("image_urls") // JSON string array for SQLite
 
   createdAt   DateTime  @default(now()) @map("created_at")
 
