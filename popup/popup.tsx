@@ -71,10 +71,20 @@ function App() {
 
     // Listen for status updates from background
     chrome.runtime.onMessage.addListener((message) => {
-      if (message.type === 'status_update') {
-        setStatus(message.status);
-      } else if (message.type === 'agent_message') {
-        addMessage('assistant', message.content);
+      try {
+        if (message.type === 'status_update') {
+          setStatus(message.status);
+        } else if (message.type === 'agent_message') {
+          if (typeof message.content === 'string') {
+            addMessage('assistant', message.content);
+          } else {
+            console.error('Invalid message content:', message.content);
+            addMessage('system', 'Error: Invalid message format');
+          }
+        }
+      } catch (error) {
+        console.error('Error handling message:', error, message);
+        addMessage('system', `Error: ${error instanceof Error ? error.message : String(error)}`);
       }
     });
   }, []);
@@ -84,7 +94,10 @@ function App() {
   }, [messages]);
 
   const addMessage = (role: 'user' | 'assistant' | 'system', content: string) => {
-    setMessages(prev => [...prev, { role, content, timestamp: new Date() }]);
+    setMessages(prev => {
+      const previousMessages = Array.isArray(prev) ? prev : [];
+      return [...previousMessages, { role, content, timestamp: new Date() }];
+    });
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -324,7 +337,7 @@ function App() {
           </div>
         )}
 
-        {messages.map((msg, idx) => (
+        {Array.isArray(messages) && messages.map((msg, idx) => (
           <div key={idx} className={`message message-${msg.role}`}>
             <div className="message-header">
               <span className="message-role">

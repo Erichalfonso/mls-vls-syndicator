@@ -20,7 +20,8 @@ export async function executeAction(action: Action): Promise<any> {
       return await clickElement(action.selector!, action.x, action.y);
 
     case 'type':
-      return await typeText(action.selector!, action.text!);
+      // Support both 'value' (from backend) and 'text' for backward compatibility
+      return await typeText(action.selector!, action.text || (action as any).value || '');
 
     case 'scroll':
       return await scrollPage(action.x || 0, action.y || 0);
@@ -92,6 +93,11 @@ async function typeText(selector: string, text: string): Promise<void> {
   const element = document.querySelector(selector) as HTMLInputElement | HTMLTextAreaElement;
   if (!element) {
     throw new Error(`Element not found: ${selector}`);
+  }
+
+  // Validate text is a string before iterating
+  if (typeof text !== 'string') {
+    throw new Error(`Invalid text value: expected string, got ${typeof text}`);
   }
 
   element.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -212,6 +218,11 @@ async function clickAtCoordinates(x: number, y: number): Promise<void> {
 }
 
 async function typeAtCursor(text: string): Promise<void> {
+  // Validate text is a string before iterating
+  if (typeof text !== 'string') {
+    throw new Error(`Invalid text value: expected string, got ${typeof text}`);
+  }
+
   // Get currently focused element
   const element = document.activeElement as HTMLInputElement | HTMLTextAreaElement | HTMLElement;
 

@@ -203,9 +203,9 @@ async function runAgent(goal: string, authToken: string) {
               screenshot,
               goal,
               currentUrl: pageInfo.data.url,
-              availableElements: domInspection.data?.elements || [],
+              availableElements: Array.isArray(domInspection.data?.elements) ? domInspection.data.elements : [],
               iteration,
-              actionHistory: state.actionHistory.slice(-5)
+              actionHistory: Array.isArray(state.actionHistory) ? state.actionHistory.slice(-5) : []
             })
           });
 

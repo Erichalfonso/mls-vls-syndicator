@@ -283,10 +283,10 @@ router.post('/ai-decision', async (req: AuthRequest, res) => {
     // Use Claude to decide next action
     const response = await anthropic.messages.create({
       model: 'claude-opus-4-5-20251101',
-      max_tokens: 2048,
+      max_tokens: 8192,
       thinking: {
         type: 'enabled',
-        budget_tokens: 3000
+        budget_tokens: 5000
       },
       messages: [{
         role: 'user',
@@ -324,13 +324,29 @@ Important: Use placeholder variables like {{ADDRESS}}, {{PRICE}}, {{BEDROOMS}} f
       }]
     });
 
-    // Extract JSON from response
+    // Debug logging
+    console.log('API Response structure:', {
+      hasContent: !!response.content,
+      contentType: typeof response.content,
+      isArray: Array.isArray(response.content),
+      contentLength: Array.isArray(response.content) ? response.content.length : 'N/A'
+    });
+
+    // Extract text and JSON from response
+    // Validate response.content is an array before calling .find()
+    if (!Array.isArray(response.content)) {
+      console.error('Invalid response.content:', response.content);
+      throw new Error(`Invalid API response structure: content is not an array (got ${typeof response.content})`);
+    }
+
     const textContent = response.content.find(block => block.type === 'text');
     if (!textContent || textContent.type !== 'text') {
       throw new Error('No text response from Claude');
     }
 
-    const jsonMatch = textContent.text.match(/\{[\s\S]*\}/);
+    const fullText = textContent.text;
+
+    const jsonMatch = fullText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error('No JSON found in response');
     }
@@ -339,7 +355,10 @@ Important: Use placeholder variables like {{ADDRESS}}, {{PRICE}}, {{BEDROOMS}} f
 
     res.json({
       success: true,
-      data: { action: actionData }
+      data: {
+        action: actionData,
+        response: actionData.reasoning || fullText
+      }
     });
   } catch (error: any) {
     res.status(500).json({
