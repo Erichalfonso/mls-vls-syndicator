@@ -1,12 +1,13 @@
 // Workflow scheduler - runs scheduled workflows automatically
 
-import cron from 'node-cron';
+import * as cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
+import { executeWorkflow } from './executor';
 
 const prisma = new PrismaClient();
 
 // Track running jobs
-const scheduledJobs = new Map<number, cron.ScheduledTask>();
+const scheduledJobs = new Map<number, any>();
 
 /**
  * Check if current time is within workflow schedule
@@ -16,7 +17,7 @@ function isWithinSchedule(workflow: any): boolean {
   if (!workflow.scheduleStartTime || !workflow.scheduleEndTime) return false;
 
   const now = new Date();
-  const currentDay = now.toLocaleDateString('en-US', { weekday: 'lowercase' });
+  const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
   const currentTime = now.toTimeString().substring(0, 5); // "HH:MM"
 
   // Check if today is a scheduled day
@@ -109,22 +110,45 @@ async function runScheduledWorkflow(workflowId: number) {
           data: { uploadStatus: 'processing' }
         });
 
-        // Simulate processing (in reality, this would execute the workflow)
-        // You would call your automation engine here
         console.log(`[Scheduler] Processing listing ${listing.id} - ${listing.address}`);
 
-        // For now, just mark as completed
-        // TODO: Actually execute workflow actions here
-        await prisma.listing.update({
-          where: { id: listing.id },
-          data: {
-            uploadStatus: 'completed',
-            uploadedAt: new Date(),
-            uploadResult: { success: true, message: 'Scheduled upload completed' }
-          }
-        });
+        // Execute workflow using execution engine
+        const result = await executeWorkflow(workflowId, listing.id);
 
-        successful++;
+        if (result.success) {
+          // Mark as completed
+          await prisma.listing.update({
+            where: { id: listing.id },
+            data: {
+              uploadStatus: 'completed',
+              uploadedAt: new Date(),
+              uploadResult: {
+                success: true,
+                message: 'Scheduled upload completed',
+                completedSteps: result.completedSteps,
+                totalSteps: result.totalSteps
+              }
+            }
+          });
+
+          successful++;
+        } else {
+          // Mark as failed
+          await prisma.listing.update({
+            where: { id: listing.id },
+            data: {
+              uploadStatus: 'failed',
+              uploadResult: {
+                success: false,
+                error: result.error || 'Workflow execution failed',
+                completedSteps: result.completedSteps,
+                totalSteps: result.totalSteps
+              }
+            }
+          });
+
+          failed++;
+        }
       } catch (error) {
         console.error(`[Scheduler] Failed to process listing ${listing.id}:`, error);
 
@@ -213,7 +237,7 @@ export function startScheduler() {
 /**
  * Stop the scheduler
  */
-export function stopScheduler(task: cron.ScheduledTask) {
+export function stopScheduler(task: any) {
   task.stop();
   console.log('[Scheduler] Scheduler stopped');
 }
