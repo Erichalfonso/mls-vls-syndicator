@@ -1,7 +1,7 @@
 // Listing routes - Upload and manage property listings
 
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
@@ -234,7 +234,7 @@ router.post('/:id/retry', async (req: AuthRequest, res) => {
       where: { id: listingId },
       data: {
         uploadStatus: 'pending',
-        uploadResult: null
+        uploadResult: Prisma.JsonNull
       }
     });
 

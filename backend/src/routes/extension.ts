@@ -284,10 +284,6 @@ router.post('/ai-decision', async (req: AuthRequest, res) => {
     const response = await anthropic.messages.create({
       model: 'claude-opus-4-5-20251101',
       max_tokens: 8192,
-      thinking: {
-        type: 'enabled',
-        budget_tokens: 5000
-      },
       messages: [{
         role: 'user',
         content: [
