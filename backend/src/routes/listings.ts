@@ -233,8 +233,7 @@ router.post('/:id/retry', async (req: AuthRequest, res) => {
     const updated = await prisma.listing.update({
       where: { id: listingId },
       data: {
-        uploadStatus: 'pending',
-        uploadResult: null
+        uploadStatus: 'pending'
       }
     });
 
