@@ -297,7 +297,7 @@ router.post('/ai-decision', async (req: AuthRequest, res) => {
           },
           {
             type: 'text',
-            text: `You are a browser automation agent in LEARNING MODE. Your goal: ${goal}
+            text: `You are a browser automation agent. Your goal: ${goal}
 
 Current page: ${currentUrl}
 
@@ -306,15 +306,19 @@ ${JSON.stringify(availableElements, null, 2)}
 
 Analyze the page and decide the next action. Respond with JSON:
 {
-  "action": "click" | "type" | "scroll" | "navigate" | "upload" | "wait_for",
-  "selector": "CSS selector",
-  "value": "{{FIELD_NAME}}" (use placeholders for data fields),
-  "field_label": "human-readable field name",
+  "action": "click" | "type" | "scroll" | "navigate" | "key_press" | "wait",
+  "selector": "CSS selector of the element",
+  "text": "actual text to type (use real values from the goal, not placeholders)",
+  "key": "Enter or Tab (for key_press action)",
   "reasoning": "why this action",
   "done": false | true
 }
 
-Important: Use placeholder variables like {{ADDRESS}}, {{PRICE}}, {{BEDROOMS}} for any data that will change per listing.`
+IMPORTANT RULES:
+1. Use the ACTUAL values provided in the goal (e.g., if goal says "login is MARIAODUBER", type "MARIAODUBER", NOT "{{USERNAME}}")
+2. For login forms: first click the input field, then type the value
+3. After filling fields, use key_press with "Enter" or click the submit button
+4. Set "done": true only when the entire goal is complete`
           }
         ]
       }]
