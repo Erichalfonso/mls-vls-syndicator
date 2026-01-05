@@ -2,7 +2,7 @@
 
 import type { User, Workflow, Listing, AutomationRun, ApiResponse, ScheduleSettings } from '../types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = import.meta.env.VITE_API_URL || 'https://claude-browser-agent-production.up.railway.app';
 
 // Helper function to get auth token
 const getAuthToken = (): string | null => {

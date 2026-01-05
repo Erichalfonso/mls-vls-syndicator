@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import './styles.css';
+import { CONFIG } from '../config';
 
-const BACKEND_URL = 'http://localhost:8000';
+const BACKEND_URL = CONFIG.BACKEND_URL;
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
