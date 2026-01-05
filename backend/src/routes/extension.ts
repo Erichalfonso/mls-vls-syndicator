@@ -271,7 +271,7 @@ router.post('/report-result', async (req: AuthRequest, res) => {
 // POST /api/extension/ai-decision - Get AI decision for current state (AI learning mode)
 router.post('/ai-decision', async (req: AuthRequest, res) => {
   try {
-    const { screenshot, goal, currentUrl, availableElements } = req.body;
+    const { screenshot, goal, currentUrl, availableElements, actionHistory, iteration } = req.body;
 
     if (!screenshot || !goal) {
       return res.status(400).json({
@@ -279,6 +279,11 @@ router.post('/ai-decision', async (req: AuthRequest, res) => {
         error: 'screenshot and goal are required'
       });
     }
+
+    // Format action history for context
+    const historyContext = Array.isArray(actionHistory) && actionHistory.length > 0
+      ? actionHistory.map((a: any, i: number) => `${i + 1}. ${a.action}${a.selector ? ` on ${a.selector}` : ''} → ${a.result}`).join('\n')
+      : 'No actions taken yet';
 
     // Use Claude to decide next action
     const response = await anthropic.messages.create({
@@ -300,11 +305,15 @@ router.post('/ai-decision', async (req: AuthRequest, res) => {
             text: `You are a browser automation agent. Your goal: ${goal}
 
 Current page: ${currentUrl}
+Iteration: ${iteration || 1}
+
+RECENT ACTIONS (what you already did):
+${historyContext}
 
 Available interactive elements:
 ${JSON.stringify(availableElements, null, 2)}
 
-Analyze the page and decide the next action. Respond with JSON:
+Based on your previous actions and the current page state, decide the NEXT action. Respond with JSON:
 {
   "action": "click" | "type" | "scroll" | "navigate" | "key_press" | "wait",
   "selector": "CSS selector of the element",
@@ -315,10 +324,10 @@ Analyze the page and decide the next action. Respond with JSON:
 }
 
 IMPORTANT RULES:
-1. Use the ACTUAL values provided in the goal (e.g., if goal says "login is MARIAODUBER", type "MARIAODUBER", NOT "{{USERNAME}}")
-2. For login forms: first click the input field, then type the value
-3. After filling fields, use key_press with "Enter" or click the submit button
-4. Set "done": true only when the entire goal is complete`
+1. CHECK YOUR RECENT ACTIONS - don't repeat the same action! If you just clicked a field, now TYPE into it.
+2. Use ACTUAL values from the goal (e.g., "MARIAODUBER" not "{{USERNAME}}")
+3. Workflow: click field → type value → move to next field or submit
+4. Set "done": true only when the ENTIRE goal is complete`
           }
         ]
       }]
