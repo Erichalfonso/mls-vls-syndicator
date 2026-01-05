@@ -282,7 +282,7 @@ router.post('/ai-decision', async (req: AuthRequest, res) => {
 
     // Use Claude to decide next action
     const response = await anthropic.messages.create({
-      model: 'claude-opus-4-5-20251101',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 8192,
       messages: [{
         role: 'user',
