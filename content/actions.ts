@@ -264,11 +264,30 @@ async function clickByText(text: string): Promise<void> {
 // Computer Use API action implementations
 async function clickAtCoordinates(x: number, y: number): Promise<void> {
   // Find element at coordinates
-  const element = document.elementFromPoint(x, y) as HTMLElement;
+  let element = document.elementFromPoint(x, y) as HTMLElement;
 
   if (!element) {
     throw new Error(`No element found at coordinates: ${x}, ${y}`);
   }
+
+  // If we clicked on a label, find the associated input
+  if (element.tagName === 'LABEL') {
+    const forId = element.getAttribute('for');
+    if (forId) {
+      const input = document.getElementById(forId);
+      if (input) element = input as HTMLElement;
+    }
+  }
+
+  // Find the actual input if we clicked on a wrapper/container
+  const inputChild = element.querySelector('input, textarea, select, [contenteditable="true"]') as HTMLElement;
+  if (inputChild) {
+    element = inputChild;
+  }
+
+  // Scroll element into view
+  element.scrollIntoView({ behavior: 'instant', block: 'center' });
+  await wait(100);
 
   // Dispatch mouse events at specific coordinates
   const mouseDownEvent = new MouseEvent('mousedown', {
@@ -301,6 +320,13 @@ async function clickAtCoordinates(x: number, y: number): Promise<void> {
   await wait(50);
   element.dispatchEvent(clickEvent);
 
+  // IMPORTANT: For input elements, explicitly focus and click
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element.isContentEditable) {
+    element.focus();
+    element.click();
+    console.log(`Focused input element:`, element.tagName, element.id || (element as HTMLInputElement).name || '');
+  }
+
   console.log(`Clicked at coordinates: ${x}, ${y} on element:`, element.tagName);
 }
 
@@ -313,9 +339,12 @@ async function typeAtCursor(text: string): Promise<void> {
   // Get currently focused element
   const element = document.activeElement as HTMLInputElement | HTMLTextAreaElement | HTMLElement;
 
-  if (!element) {
-    throw new Error('No element is focused for typing');
+  if (!element || element === document.body || element === document.documentElement) {
+    console.error('No input element is focused. Active element:', element?.tagName);
+    throw new Error('No input element is focused for typing. Click on an input field first.');
   }
+
+  console.log(`Typing "${text.substring(0, 20)}..." into:`, element.tagName, element.id || (element as any).name || '');
 
   // Handle different element types
   if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
