@@ -88,9 +88,68 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return true; // Keep channel open for async
 });
 
+// Check if user is just asking a question (not requesting automation)
+function isJustAQuestion(message: string): boolean {
+  const lowerMessage = message.toLowerCase().trim();
+
+  // Greetings without tasks
+  if (/^(hi|hello|hey|good morning|good afternoon|good evening)[\s!.]*$/i.test(lowerMessage)) {
+    return true;
+  }
+
+  // Pure questions about the extension itself
+  const questionPatterns = [
+    /^what can you do/i,
+    /^what are you/i,
+    /^who are you/i,
+    /^how do you work/i,
+    /^what is this/i,
+    /^help$/i,
+    /^how does this work/i,
+  ];
+
+  if (questionPatterns.some(pattern => pattern.test(lowerMessage))) {
+    return true;
+  }
+
+  // If message contains action verbs, it's a task request
+  const actionVerbs = [
+    'login', 'log in', 'sign in', 'signin',
+    'click', 'press', 'tap', 'select',
+    'fill', 'enter', 'type', 'input', 'write',
+    'submit', 'send', 'post', 'upload',
+    'add', 'create', 'make', 'build',
+    'go to', 'navigate', 'open', 'visit',
+    'find', 'search', 'look for',
+    'download', 'save', 'export',
+    'figure out', 'learn', 'teach', 'show me'
+  ];
+
+  if (actionVerbs.some(verb => lowerMessage.includes(verb))) {
+    return false; // It's a task, not just a question
+  }
+
+  // Short vague messages might be questions
+  if (lowerMessage.length < 15 && !lowerMessage.includes('workflow')) {
+    return true;
+  }
+
+  // Default: assume it's a task (the extension is for automation after all)
+  return false;
+}
+
 async function runAgent(goal: string, authToken: string) {
   if (state.running) {
     throw new Error('Agent is already running');
+  }
+
+  // Check if this is just a question/greeting (not a task)
+  if (isJustAQuestion(goal)) {
+    sendMessageToPopup({
+      type: 'agent_message',
+      content: `I'm your browser automation assistant! Tell me what you want me to do on this page and I'll learn how to do it.\n\nFor example:\n• "Login with username X and password Y"\n• "Fill out this form and submit it"\n• "Add a new listing with these details"\n\nJust describe the task naturally and I'll figure it out!`
+    });
+    return;
   }
 
   state.running = true;
@@ -118,6 +177,21 @@ async function runAgent(goal: string, authToken: string) {
   // Create workflow on backend
   updateStatus('Creating workflow...', 'Setting up AI learning mode');
   try {
+    // Extract a clean workflow name from the goal
+    let workflowName = goal
+      .replace(/create\s*(a\s*)?workflow\s*(to|for)?/i, '')
+      .replace(/automate\s*/i, '')
+      .replace(/learn\s*how\s*to\s*/i, '')
+      .trim();
+
+    if (workflowName.length < 5) {
+      workflowName = goal;
+    }
+    workflowName = workflowName.charAt(0).toUpperCase() + workflowName.slice(1);
+    if (workflowName.length > 50) {
+      workflowName = workflowName.substring(0, 50) + '...';
+    }
+
     const workflowResponse = await fetch(`${BACKEND_URL}/api/workflows`, {
       method: 'POST',
       headers: {
@@ -125,7 +199,7 @@ async function runAgent(goal: string, authToken: string) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        name: `${goal.substring(0, 50)}...`,
+        name: workflowName,
         description: goal,
         website: tab.url
       })
@@ -137,7 +211,12 @@ async function runAgent(goal: string, authToken: string) {
     }
 
     state.workflowId = workflowData.data.workflow.id;
-    updateStatus('Workflow created', `ID: ${state.workflowId}`);
+    updateStatus('Workflow created', `"${workflowName}"`);
+
+    sendMessageToPopup({
+      type: 'agent_message',
+      content: `📝 Created workflow: "${workflowName}"\n\nI'll now learn how to do this task. Watch as I analyze the page and perform actions.`
+    });
   } catch (error) {
     throw new Error(`Failed to create workflow: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -173,7 +252,7 @@ async function runAgent(goal: string, authToken: string) {
   try {
     // Agent loop
     let iteration = 0;
-    const MAX_ITERATIONS = 20;
+    const MAX_ITERATIONS = 50; // Increased for complex multi-step workflows
 
     while (state.running && iteration < MAX_ITERATIONS) {
       iteration++;
@@ -411,7 +490,7 @@ function buildPrompt(goal: string, pageInfo: any, domInspection: any, iteration:
 ## Current State
 Page: ${pageInfo.data.url}
 Title: ${pageInfo.data.title}
-Iteration: ${iteration}/20
+Iteration: ${iteration}/50
 
 ## Available Interactive Elements
 ${elementsContext}

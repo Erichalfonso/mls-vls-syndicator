@@ -24,6 +24,204 @@ interface User {
   subscriptionTier: string;
 }
 
+interface Workflow {
+  id: number;
+  name: string;
+  description: string;
+  website: string;
+  status: string;
+  recordedActions: any[];
+  isScheduled: boolean;
+  scheduleStartTime: string | null;
+  scheduleEndTime: string | null;
+  scheduleDays: string[] | null;
+  scheduleTimezone: string | null;
+  lastScheduledRun: string | null;
+  createdAt: string;
+}
+
+interface ScheduleSettings {
+  isScheduled: boolean;
+  scheduleStartTime: string;
+  scheduleEndTime: string;
+  scheduleDays: string[];
+  scheduleTimezone: string;
+}
+
+type TabType = 'chat' | 'workflows';
+
+// Schedule Modal Component
+const DAYS = [
+  { value: 'monday', label: 'Mon' },
+  { value: 'tuesday', label: 'Tue' },
+  { value: 'wednesday', label: 'Wed' },
+  { value: 'thursday', label: 'Thu' },
+  { value: 'friday', label: 'Fri' },
+  { value: 'saturday', label: 'Sat' },
+  { value: 'sunday', label: 'Sun' },
+];
+
+const TIMEZONES = [
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'America/Phoenix',
+  'Pacific/Honolulu',
+];
+
+interface ScheduleModalProps {
+  workflow: Workflow;
+  onClose: () => void;
+  onSave: (workflowId: number, schedule: ScheduleSettings) => Promise<void>;
+}
+
+function ScheduleModal({ workflow, onClose, onSave }: ScheduleModalProps) {
+  const [isScheduled, setIsScheduled] = useState(workflow.isScheduled || false);
+  const [startTime, setStartTime] = useState(workflow.scheduleStartTime || '09:00');
+  const [endTime, setEndTime] = useState(workflow.scheduleEndTime || '17:00');
+  const [selectedDays, setSelectedDays] = useState<string[]>(
+    workflow.scheduleDays || ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+  );
+  const [timezone, setTimezone] = useState(workflow.scheduleTimezone || 'America/New_York');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleDayToggle = (day: string) => {
+    setSelectedDays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
+    );
+  };
+
+  const handleSave = async () => {
+    setError('');
+
+    if (isScheduled) {
+      if (!startTime || !endTime) {
+        setError('Set both start and end times');
+        return;
+      }
+      if (selectedDays.length === 0) {
+        setError('Select at least one day');
+        return;
+      }
+      if (startTime >= endTime) {
+        setError('End time must be after start time');
+        return;
+      }
+    }
+
+    setSaving(true);
+
+    try {
+      await onSave(workflow.id, {
+        isScheduled,
+        scheduleStartTime: startTime,
+        scheduleEndTime: endTime,
+        scheduleDays: selectedDays,
+        scheduleTimezone: timezone,
+      });
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Failed to save schedule');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>Schedule: {workflow.name}</h3>
+          <button className="modal-close-btn" onClick={onClose}>×</button>
+        </div>
+
+        <div className="modal-body">
+          {error && <div className="modal-error">{error}</div>}
+
+          <label className="schedule-toggle">
+            <input
+              type="checkbox"
+              checked={isScheduled}
+              onChange={(e) => setIsScheduled(e.target.checked)}
+            />
+            <span>Enable Scheduled Runs</span>
+          </label>
+
+          {isScheduled && (
+            <>
+              <div className="time-row">
+                <div className="time-field">
+                  <label>Start</label>
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                  />
+                </div>
+                <div className="time-field">
+                  <label>End</label>
+                  <input
+                    type="time"
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="days-section">
+                <label>Active Days</label>
+                <div className="days-grid">
+                  {DAYS.map((day) => (
+                    <button
+                      key={day.value}
+                      type="button"
+                      className={`day-btn ${selectedDays.includes(day.value) ? 'active' : ''}`}
+                      onClick={() => handleDayToggle(day.value)}
+                    >
+                      {day.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="timezone-section">
+                <label>Timezone</label>
+                <select
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                >
+                  {TIMEZONES.map((tz) => (
+                    <option key={tz} value={tz}>
+                      {tz.replace('America/', '').replace('Pacific/', '').replace(/_/g, ' ')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {workflow.lastScheduledRun && (
+                <div className="last-run-info">
+                  Last run: {new Date(workflow.lastScheduledRun).toLocaleString()}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="modal-footer">
+          <button className="btn-cancel" onClick={onClose} disabled={saving}>
+            Cancel
+          </button>
+          <button className="btn-save" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -35,6 +233,13 @@ function App() {
   const [isSignupMode, setIsSignupMode] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Tab and workflows state
+  const [activeTab, setActiveTab] = useState<TabType>('chat');
+  const [workflows, setWorkflows] = useState<Workflow[]>([]);
+  const [workflowsLoading, setWorkflowsLoading] = useState(false);
+  const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(null);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
 
   // Authentication form state
   const [authEmail, setAuthEmail] = useState('');
@@ -189,7 +394,114 @@ function App() {
     setIsLoggedIn(false);
     setMessages([]);
     setShowSettings(false);
+    setWorkflows([]);
     addMessage('system', 'Logged out successfully');
+  };
+
+  // Load workflows from backend
+  const loadWorkflows = async () => {
+    if (!authToken) return;
+
+    setWorkflowsLoading(true);
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/workflows`, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+      const data = await response.json();
+      if (data.success && data.data?.workflows) {
+        setWorkflows(data.data.workflows);
+      }
+    } catch (error) {
+      console.error('Failed to load workflows:', error);
+    } finally {
+      setWorkflowsLoading(false);
+    }
+  };
+
+  // Save schedule settings
+  const handleSaveSchedule = async (workflowId: number, schedule: ScheduleSettings) => {
+    const response = await fetch(`${BACKEND_URL}/api/workflows/${workflowId}/schedule`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
+      body: JSON.stringify(schedule)
+    });
+
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to save schedule');
+    }
+
+    // Update workflow in local state
+    if (data.data?.workflow) {
+      setWorkflows(workflows.map(w =>
+        w.id === workflowId ? data.data.workflow : w
+      ));
+    }
+  };
+
+  // Load workflows when switching to workflows tab
+  useEffect(() => {
+    if (activeTab === 'workflows' && isLoggedIn && workflows.length === 0) {
+      loadWorkflows();
+    }
+  }, [activeTab, isLoggedIn]);
+
+  const openScheduleModal = (workflow: Workflow) => {
+    setSelectedWorkflow(workflow);
+    setShowScheduleModal(true);
+  };
+
+  // Finalize a workflow (change from learning to ready)
+  const handleFinalizeWorkflow = async (workflowId: number) => {
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/workflows/${workflowId}/finalize`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+
+      const data = await response.json();
+      if (data.success && data.data?.workflow) {
+        setWorkflows(workflows.map(w =>
+          w.id === workflowId ? data.data.workflow : w
+        ));
+      } else {
+        alert(data.error || 'Failed to finalize workflow');
+      }
+    } catch (error) {
+      console.error('Failed to finalize workflow:', error);
+      alert('Failed to finalize workflow');
+    }
+  };
+
+  // Delete a workflow
+  const handleDeleteWorkflow = async (workflowId: number) => {
+    if (!confirm('Delete this workflow?')) return;
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/workflows/${workflowId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setWorkflows(workflows.filter(w => w.id !== workflowId));
+      } else {
+        alert(data.error || 'Failed to delete workflow');
+      }
+    } catch (error) {
+      console.error('Failed to delete workflow:', error);
+      alert('Failed to delete workflow');
+    }
   };
 
   const handleSend = async () => {
@@ -287,6 +599,16 @@ function App() {
     );
   }
 
+  // Helper to get status badge
+  const getStatusBadge = (wfStatus: string) => {
+    const badges: Record<string, { text: string; className: string }> = {
+      learning: { text: 'Learning', className: 'badge-learning' },
+      ready: { text: 'Ready', className: 'badge-ready' },
+      active: { text: 'Active', className: 'badge-active' },
+    };
+    return badges[wfStatus] || { text: wfStatus, className: '' };
+  };
+
   // Main interface (authenticated)
   return (
     <div className="app">
@@ -294,6 +616,22 @@ function App() {
         <h1>Claude Browser Agent</h1>
         <button onClick={() => setShowSettings(!showSettings)} className="settings-btn">
           ⚙️
+        </button>
+      </div>
+
+      {/* Tabs */}
+      <div className="tabs">
+        <button
+          className={`tab ${activeTab === 'chat' ? 'active' : ''}`}
+          onClick={() => setActiveTab('chat')}
+        >
+          💬 Chat
+        </button>
+        <button
+          className={`tab ${activeTab === 'workflows' ? 'active' : ''}`}
+          onClick={() => setActiveTab('workflows')}
+        >
+          📋 Workflows
         </button>
       </div>
 
@@ -321,61 +659,156 @@ function App() {
         </div>
       )}
 
-      <div className="messages">
-        {messages.length === 0 && (
-          <div className="welcome">
-            <h2>👋 Welcome!</h2>
-            <p>Tell me what you want to automate on this page.</p>
-            <div className="examples">
-              <h3>Examples:</h3>
-              <ul>
-                <li>"Fill out this form with my resume data"</li>
-                <li>"Find all product links and save to a file"</li>
-                <li>"Upload photos from my Downloads folder"</li>
-                <li>"Click through this checkout flow"</li>
-              </ul>
-            </div>
-          </div>
-        )}
+      {/* Chat Tab */}
+      {activeTab === 'chat' && (
+        <>
+          <div className="messages">
+            {messages.length === 0 && (
+              <div className="welcome">
+                <h2>👋 Welcome!</h2>
+                <p>Tell me what you want to automate on this page.</p>
+                <div className="examples">
+                  <h3>Examples:</h3>
+                  <ul>
+                    <li>"Fill out this form with my resume data"</li>
+                    <li>"Find all product links and save to a file"</li>
+                    <li>"Upload photos from my Downloads folder"</li>
+                    <li>"Click through this checkout flow"</li>
+                  </ul>
+                </div>
+              </div>
+            )}
 
-        {Array.isArray(messages) && messages.map((msg, idx) => (
-          <div key={idx} className={`message message-${msg.role}`}>
-            <div className="message-header">
-              <span className="message-role">
-                {msg.role === 'user' ? '👤' : msg.role === 'assistant' ? '🤖' : 'ℹ️'}
-              </span>
-              <span className="message-time">
-                {msg.timestamp.toLocaleTimeString()}
-              </span>
-            </div>
-            <div className="message-content">{msg.content}</div>
+            {Array.isArray(messages) && messages.map((msg, idx) => (
+              <div key={idx} className={`message message-${msg.role}`}>
+                <div className="message-header">
+                  <span className="message-role">
+                    {msg.role === 'user' ? '👤' : msg.role === 'assistant' ? '🤖' : 'ℹ️'}
+                  </span>
+                  <span className="message-time">
+                    {msg.timestamp.toLocaleTimeString()}
+                  </span>
+                </div>
+                <div className="message-content">{msg.content}</div>
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
           </div>
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
 
-      <div className="input-area">
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              handleSend();
-            }
+          <div className="input-area">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder="What would you like me to do on this page?"
+              disabled={status.running}
+              rows={3}
+            />
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || status.running}
+              className="send-btn"
+            >
+              Send
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Workflows Tab */}
+      {activeTab === 'workflows' && (
+        <div className="workflows-container">
+          <div className="workflows-header">
+            <h2>My Workflows</h2>
+            <button onClick={loadWorkflows} className="refresh-btn" disabled={workflowsLoading}>
+              {workflowsLoading ? '...' : '🔄'}
+            </button>
+          </div>
+
+          {workflowsLoading ? (
+            <div className="workflows-loading">Loading workflows...</div>
+          ) : workflows.length === 0 ? (
+            <div className="workflows-empty">
+              <p>No workflows yet.</p>
+              <p className="hint">Use the Chat tab to create a new workflow by telling the AI what to automate.</p>
+            </div>
+          ) : (
+            <div className="workflows-list">
+              {workflows.map((workflow) => {
+                const badge = getStatusBadge(workflow.status);
+                const isReady = workflow.status === 'ready' || workflow.status === 'active';
+
+                return (
+                  <div key={workflow.id} className="workflow-item">
+                    <div className="workflow-item-header">
+                      <span className="workflow-name">{workflow.name}</span>
+                      <span className={`workflow-badge ${badge.className}`}>{badge.text}</span>
+                    </div>
+
+                    <div className="workflow-item-meta">
+                      <span className="workflow-website">{workflow.website}</span>
+                      {workflow.recordedActions && (
+                        <span className="workflow-steps">
+                          {(workflow.recordedActions as any[]).length} steps
+                        </span>
+                      )}
+                    </div>
+
+                    {workflow.isScheduled && (
+                      <div className="workflow-schedule-info">
+                        ⏰ {workflow.scheduleStartTime} - {workflow.scheduleEndTime}
+                      </div>
+                    )}
+
+                    <div className="workflow-item-actions">
+                      {workflow.status === 'learning' && (
+                        <button
+                          className="btn-finalize"
+                          onClick={() => handleFinalizeWorkflow(workflow.id)}
+                        >
+                          ✓ Mark Ready
+                        </button>
+                      )}
+                      {isReady && (
+                        <button
+                          className="btn-schedule-small"
+                          onClick={() => openScheduleModal(workflow)}
+                        >
+                          {workflow.isScheduled ? '⏰ Edit Schedule' : '⏰ Schedule'}
+                        </button>
+                      )}
+                      <button
+                        className="btn-delete-small"
+                        onClick={() => handleDeleteWorkflow(workflow.id)}
+                        title="Delete workflow"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Schedule Modal */}
+      {showScheduleModal && selectedWorkflow && (
+        <ScheduleModal
+          workflow={selectedWorkflow}
+          onClose={() => {
+            setShowScheduleModal(false);
+            setSelectedWorkflow(null);
           }}
-          placeholder="What would you like me to do on this page?"
-          disabled={status.running}
-          rows={3}
+          onSave={handleSaveSchedule}
         />
-        <button
-          onClick={handleSend}
-          disabled={!input.trim() || status.running}
-          className="send-btn"
-        >
-          Send
-        </button>
-      </div>
+      )}
     </div>
   );
 }
