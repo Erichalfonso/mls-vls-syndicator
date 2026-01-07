@@ -70,7 +70,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const pageInfo = {
           url: window.location.href,
           title: document.title,
-          readyState: document.readyState
+          readyState: document.readyState,
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight
         };
         sendResponse({ success: true, data: pageInfo });
       }

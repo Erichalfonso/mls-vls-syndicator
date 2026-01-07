@@ -268,8 +268,211 @@ router.post('/report-result', async (req: AuthRequest, res) => {
   }
 });
 
-// POST /api/extension/ai-decision - Get AI decision for current state (AI learning mode)
+// Conversation history storage (in production, use Redis or database)
+const conversationHistory = new Map<string, any[]>();
+
+// POST /api/extension/ai-decision - Get AI decision using Claude computer use
 router.post('/ai-decision', async (req: AuthRequest, res) => {
+  try {
+    const { screenshot, goal, currentUrl, viewportWidth, viewportHeight, sessionId } = req.body;
+
+    if (!screenshot || !goal) {
+      return res.status(400).json({
+        success: false,
+        error: 'screenshot and goal are required'
+      });
+    }
+
+    // Get or create conversation history for this session
+    const historyKey = sessionId || `${req.userId}-${Date.now()}`;
+    let messages = conversationHistory.get(historyKey) || [];
+
+    // Screen dimensions (default to common size)
+    const displayWidth = viewportWidth || 1280;
+    const displayHeight = viewportHeight || 800;
+
+    // If this is the first message, add the goal
+    if (messages.length === 0) {
+      messages.push({
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: `Your task: ${goal}
+
+Current page: ${currentUrl}
+
+Please complete this task by interacting with the browser. Take a screenshot first to see the current state, then perform the necessary actions.`
+          }
+        ]
+      });
+    }
+
+    // Add the screenshot as a tool result (simulating computer tool returning screenshot)
+    // For the first iteration, we include it as part of the initial context
+    if (messages.length === 1) {
+      // First message - add screenshot to initial request
+      messages[0].content.push({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: 'image/png',
+          data: screenshot.replace(/^data:image\/png;base64,/, '')
+        }
+      });
+    } else {
+      // Subsequent messages - add screenshot as tool result
+      messages.push({
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: messages[messages.length - 1]?.content?.find((c: any) => c.type === 'tool_use')?.id || 'screenshot',
+            content: [
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: 'image/png',
+                  data: screenshot.replace(/^data:image\/png;base64,/, '')
+                }
+              }
+            ]
+          }
+        ]
+      });
+    }
+
+    // Call Claude with computer use tool
+    const response = await anthropic.beta.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      betas: ['computer-use-2025-01-24'],
+      tools: [
+        {
+          type: 'computer_20250124',
+          name: 'computer',
+          display_width_px: displayWidth,
+          display_height_px: displayHeight
+        }
+      ],
+      messages: messages
+    });
+
+    // Store assistant response in history
+    messages.push({
+      role: 'assistant',
+      content: response.content
+    });
+    conversationHistory.set(historyKey, messages);
+
+    // Parse the response
+    const toolUseBlock = response.content.find((block: any) => block.type === 'tool_use');
+    const textBlock = response.content.find((block: any) => block.type === 'text');
+
+    if (toolUseBlock && toolUseBlock.type === 'tool_use') {
+      // Claude wants to use the computer tool
+      const action = toolUseBlock.input as {
+        action: string;
+        coordinate?: [number, number];
+        text?: string;
+        key?: string;
+        scroll_direction?: string;
+        scroll_amount?: number;
+      };
+
+      // Convert computer use action to our format
+      let convertedAction: any = {
+        action: action.action,
+        toolUseId: toolUseBlock.id
+      };
+
+      switch (action.action) {
+        case 'screenshot':
+          convertedAction.action = 'screenshot';
+          break;
+        case 'left_click':
+        case 'right_click':
+        case 'double_click':
+        case 'middle_click':
+          convertedAction.action = 'click_coordinates';
+          convertedAction.x = action.coordinate?.[0] || 0;
+          convertedAction.y = action.coordinate?.[1] || 0;
+          convertedAction.clickType = action.action;
+          break;
+        case 'type':
+          convertedAction.action = 'type_text';
+          convertedAction.text = action.text || '';
+          break;
+        case 'key':
+          convertedAction.action = 'key_press';
+          convertedAction.key = action.text || '';
+          break;
+        case 'scroll':
+          convertedAction.action = 'scroll';
+          convertedAction.direction = action.scroll_direction || 'down';
+          convertedAction.amount = action.scroll_amount || 3;
+          convertedAction.x = action.coordinate?.[0] || displayWidth / 2;
+          convertedAction.y = action.coordinate?.[1] || displayHeight / 2;
+          break;
+        case 'mouse_move':
+          convertedAction.action = 'mouse_move';
+          convertedAction.x = action.coordinate?.[0] || 0;
+          convertedAction.y = action.coordinate?.[1] || 0;
+          break;
+        case 'wait':
+          convertedAction.action = 'wait';
+          convertedAction.duration = 1000;
+          break;
+        default:
+          convertedAction.action = action.action;
+      }
+
+      res.json({
+        success: true,
+        data: {
+          action: convertedAction,
+          response: textBlock?.type === 'text' ? textBlock.text : `Performing: ${action.action}`,
+          sessionId: historyKey,
+          stopReason: response.stop_reason
+        }
+      });
+    } else if (response.stop_reason === 'end_turn') {
+      // Claude is done - no more tool use
+      // Clear conversation history
+      conversationHistory.delete(historyKey);
+
+      res.json({
+        success: true,
+        data: {
+          action: { action: 'done' },
+          response: textBlock?.type === 'text' ? textBlock.text : 'Task completed',
+          sessionId: historyKey,
+          done: true
+        }
+      });
+    } else {
+      // Text response without tool use
+      res.json({
+        success: true,
+        data: {
+          action: null,
+          response: textBlock?.type === 'text' ? textBlock.text : 'No action needed',
+          sessionId: historyKey
+        }
+      });
+    }
+  } catch (error: any) {
+    console.error('AI decision error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get AI decision'
+    });
+  }
+});
+
+// Legacy endpoint for backward compatibility
+router.post('/ai-decision-legacy', async (req: AuthRequest, res) => {
   try {
     const { screenshot, goal, currentUrl, availableElements, actionHistory, iteration } = req.body;
 
@@ -333,19 +536,8 @@ IMPORTANT RULES:
       }]
     });
 
-    // Debug logging
-    console.log('API Response structure:', {
-      hasContent: !!response.content,
-      contentType: typeof response.content,
-      isArray: Array.isArray(response.content),
-      contentLength: Array.isArray(response.content) ? response.content.length : 'N/A'
-    });
-
-    // Extract text and JSON from response
-    // Validate response.content is an array before calling .find()
     if (!Array.isArray(response.content)) {
-      console.error('Invalid response.content:', response.content);
-      throw new Error(`Invalid API response structure: content is not an array (got ${typeof response.content})`);
+      throw new Error(`Invalid API response structure`);
     }
 
     const textContent = response.content.find(block => block.type === 'text');
@@ -354,7 +546,6 @@ IMPORTANT RULES:
     }
 
     const fullText = textContent.text;
-
     const jsonMatch = fullText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error('No JSON found in response');

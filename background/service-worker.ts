@@ -16,6 +16,9 @@ interface AgentState {
   lastMouseY: number;
   actionHistory: Array<{ action: string; selector?: string; result: string }>;
   currentStep: number;
+  sessionId: string | null;  // For computer use conversation continuity
+  viewportWidth: number;
+  viewportHeight: number;
 }
 
 const state: AgentState = {
@@ -28,7 +31,10 @@ const state: AgentState = {
   lastMouseX: 0,
   lastMouseY: 0,
   actionHistory: [],
-  currentStep: 0
+  currentStep: 0,
+  sessionId: null,
+  viewportWidth: 1280,
+  viewportHeight: 800
 };
 
 // Set side panel behavior on install
@@ -160,6 +166,7 @@ async function runAgent(goal: string, authToken: string) {
   state.lastMouseY = 0;
   state.actionHistory = [];
   state.currentStep = 0;
+  state.sessionId = null; // Will be set by first API response
 
   // Get current tab
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -250,9 +257,14 @@ async function runAgent(goal: string, authToken: string) {
   }
 
   try {
-    // Agent loop
+    // Get viewport dimensions for coordinate scaling
+    const pageInfo = await sendMessageToTab(state.tabId, { type: 'get_page_info' });
+    state.viewportWidth = pageInfo.data?.viewportWidth || 1280;
+    state.viewportHeight = pageInfo.data?.viewportHeight || 800;
+
+    // Agent loop - using Claude's computer use API
     let iteration = 0;
-    const MAX_ITERATIONS = 50; // Increased for complex multi-step workflows
+    const MAX_ITERATIONS = 50;
 
     while (state.running && iteration < MAX_ITERATIONS) {
       iteration++;
@@ -261,12 +273,11 @@ async function runAgent(goal: string, authToken: string) {
       updateStatus('Taking screenshot...', `Iteration ${iteration}/${MAX_ITERATIONS}`);
       const screenshot = await captureScreenshot();
 
-      // Get page info and DOM inspection for better reasoning
-      const pageInfo = await sendMessageToTab(state.tabId, { type: 'get_page_info' });
-      const domInspection = await sendMessageToTab(state.tabId, { type: 'inspect_page' });
+      // Get current page URL
+      const currentPageInfo = await sendMessageToTab(state.tabId, { type: 'get_page_info' });
 
-      // Call backend AI decision endpoint
-      updateStatus('Thinking...', 'Analyzing page and reasoning about next action');
+      // Call backend AI decision endpoint with computer use format
+      updateStatus('Thinking...', 'Claude is analyzing the page...');
 
       let response;
       let retries = 0;
@@ -274,7 +285,7 @@ async function runAgent(goal: string, authToken: string) {
 
       while (retries < MAX_RETRIES) {
         try {
-          const aiResponse = await fetch(`${BACKEND_URL}/api/extension/ai-decision`, {
+          const aiResponse: Response = await fetch(`${BACKEND_URL}/api/extension/ai-decision`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${state.authToken}`,
@@ -283,20 +294,26 @@ async function runAgent(goal: string, authToken: string) {
             body: JSON.stringify({
               screenshot,
               goal,
-              currentUrl: pageInfo.data.url,
-              availableElements: Array.isArray(domInspection.data?.elements) ? domInspection.data.elements : [],
-              iteration,
-              actionHistory: Array.isArray(state.actionHistory) ? state.actionHistory.slice(-5) : []
+              currentUrl: currentPageInfo.data?.url || '',
+              viewportWidth: state.viewportWidth,
+              viewportHeight: state.viewportHeight,
+              sessionId: state.sessionId // Continue conversation
             })
           });
 
-          const aiData = await aiResponse.json();
+          const aiData: { success: boolean; error?: string; data?: any } = await aiResponse.json();
           if (!aiData.success) {
             throw new Error(aiData.error || 'AI decision failed');
           }
 
           response = aiData.data;
-          break; // Success, exit retry loop
+
+          // Store session ID for conversation continuity
+          if (response.sessionId) {
+            state.sessionId = response.sessionId;
+          }
+
+          break;
         } catch (apiError: any) {
           retries++;
           console.error(`API error (attempt ${retries}/${MAX_RETRIES}):`, apiError);
@@ -305,13 +322,11 @@ async function runAgent(goal: string, authToken: string) {
             throw new Error(`API failed after ${MAX_RETRIES} attempts: ${apiError.message || String(apiError)}`);
           }
 
-          // Wait before retry (exponential backoff)
           updateStatus('API error, retrying...', `Attempt ${retries}/${MAX_RETRIES}`);
-          await wait(1000 * Math.pow(2, retries)); // 2s, 4s, 8s
+          await wait(1000 * Math.pow(2, retries));
         }
       }
 
-      // Parse response
       if (!response) {
         throw new Error('No response from API');
       }
@@ -319,22 +334,15 @@ async function runAgent(goal: string, authToken: string) {
       console.log('AI Response:', JSON.stringify(response, null, 2));
 
       const textResponse = response.response || '';
-      const action = response.action || null;
+      const action = response.action;
 
-      // Debug: log what action we got
-      console.log('Parsed action:', action);
-      if (!action || !action.action) {
-        console.log('WARNING: No valid action in response');
-      }
-
-      // Send text response to popup and overlay for visibility
+      // Send text response to popup
       if (textResponse) {
         sendMessageToPopup({
           type: 'agent_message',
           content: textResponse
         });
 
-        // Add to overlay
         sendMessageToTab(state.tabId, {
           type: 'add_overlay_message',
           message: textResponse.substring(0, 200) + (textResponse.length > 200 ? '...' : ''),
@@ -343,91 +351,88 @@ async function runAgent(goal: string, authToken: string) {
       }
 
       // Check if task is done
-      if (textResponse.toLowerCase().includes('task complete') ||
-          textResponse.toLowerCase().includes('finished') ||
-          !action) {
+      if (response.done || action?.action === 'done') {
+        sendMessageToPopup({
+          type: 'agent_message',
+          content: '✅ Task completed!'
+        });
         break;
       }
 
+      // Handle screenshot action - just continue to next iteration
+      if (action?.action === 'screenshot') {
+        console.log('Screenshot action - continuing to next iteration');
+        await wait(500);
+        continue;
+      }
+
       // Execute action
-      let actionSuccess = false;
-      try {
-        // Show reasoning in overlay
-        if (action.reasoning) {
-          sendMessageToTab(state.tabId, {
-            type: 'add_overlay_message',
-            message: `💭 ${action.reasoning}`,
-            messageType: 'agent'
-          }).catch(() => {});
-        }
-
-        console.log(`Executing action: ${action.action} on ${action.selector || 'N/A'}`);
-        updateStatus(
-          `Executing: ${action.action}`,
-          action.selector || action.reasoning || ''
-        );
-
-        // Execute the action
-        await executeActionOnTab(state.tabId, action);
-        actionSuccess = true;
-        console.log('Action executed successfully');
-
-        // Record action to backend
+      if (action && action.action) {
         try {
-          await fetch(`${BACKEND_URL}/api/extension/record-action`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${state.authToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              workflowId: state.workflowId,
-              action
-            })
+          console.log(`Executing action: ${action.action}`, action);
+          updateStatus(
+            `Executing: ${action.action}`,
+            action.x && action.y ? `at (${action.x}, ${action.y})` : action.text || ''
+          );
+
+          // Execute the action
+          await executeActionOnTab(state.tabId, action);
+          console.log('Action executed successfully');
+
+          // Record action to backend
+          try {
+            await fetch(`${BACKEND_URL}/api/extension/record-action`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${state.authToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                workflowId: state.workflowId,
+                action
+              })
+            });
+          } catch (recordError) {
+            console.error('Failed to record action:', recordError);
+          }
+
+          state.actionHistory.push({
+            action: action.action,
+            selector: action.x && action.y ? `(${action.x}, ${action.y})` : undefined,
+            result: 'success'
           });
-        } catch (recordError) {
-          console.error('Failed to record action:', recordError);
-          // Continue anyway - action was executed successfully
+          if (state.actionHistory.length > 10) {
+            state.actionHistory.shift();
+          }
+
+          state.currentStep++;
+
+        } catch (error) {
+          const errorMessage = `Action failed: ${error instanceof Error ? error.message : String(error)}`;
+          console.error('Action execution failed:', error);
+          console.error('Failed action was:', JSON.stringify(action, null, 2));
+
+          state.actionHistory.push({
+            action: action?.action || 'unknown',
+            selector: action?.x && action?.y ? `(${action.x}, ${action.y})` : undefined,
+            result: `failed: ${error instanceof Error ? error.message : String(error)}`
+          });
+          if (state.actionHistory.length > 10) {
+            state.actionHistory.shift();
+          }
+
+          sendMessageToPopup({
+            type: 'agent_message',
+            content: `❌ ${errorMessage}`
+          });
+
+          // Don't count failed attempts but continue anyway
+          // The next screenshot will show Claude the current state
         }
-
-        // Record action in local history
-        state.actionHistory.push({
-          action: action.action,
-          selector: action.selector,
-          result: 'success'
-        });
-        if (state.actionHistory.length > 10) {
-          state.actionHistory.shift(); // Keep last 10
-        }
-
-        state.currentStep++;
-
-      } catch (error) {
-        const errorMessage = `Action failed: ${error instanceof Error ? error.message : String(error)}`;
-        console.error('Action execution failed:', error);
-        console.error('Failed action was:', JSON.stringify(action, null, 2));
-
-        // Record failed action in local history
-        state.actionHistory.push({
-          action: action?.action || 'unknown',
-          selector: action?.selector,
-          result: `failed: ${error instanceof Error ? error.message : String(error)}`
-        });
-        if (state.actionHistory.length > 10) {
-          state.actionHistory.shift();
-        }
-
-        // Send error to popup with more detail
-        sendMessageToPopup({
-          type: 'agent_message',
-          content: `❌ ${errorMessage} (tried: ${action?.action} on ${action?.selector || 'unknown'})`
-        });
-
-        iteration--; // Don't count failed attempts
       }
 
       // Wait between actions
-      await wait(1500);
+      await wait(1000);
     }
 
     if (iteration >= MAX_ITERATIONS) {

@@ -1,7 +1,7 @@
 // DOM actions - click, type, scroll, upload, etc.
 
 export interface Action {
-  action: 'click' | 'type' | 'scroll' | 'navigate' | 'upload' | 'wait' | 'click_coordinates' | 'type_at_cursor' | 'key_press' | 'mouse_move' | 'noop' | 'click_text';
+  action: 'click' | 'type' | 'scroll' | 'navigate' | 'upload' | 'wait' | 'click_coordinates' | 'type_at_cursor' | 'key_press' | 'mouse_move' | 'noop' | 'click_text' | 'type_text' | 'screenshot' | 'done';
   selector?: string;
   text?: string;
   filepath?: string;
@@ -10,6 +10,10 @@ export interface Action {
   x?: number;
   y?: number;
   key?: string;
+  clickType?: string;
+  direction?: string;
+  amount?: number;
+  toolUseId?: string;
 }
 
 export async function executeAction(action: Action): Promise<any> {
@@ -24,6 +28,10 @@ export async function executeAction(action: Action): Promise<any> {
       return await typeText(action.selector!, action.text || (action as any).value || '');
 
     case 'scroll':
+      // Handle both scrollTo (x,y position) and scrollBy (direction + amount)
+      if (action.direction) {
+        return await scrollByDirection(action.direction, action.amount || 3, action.x, action.y);
+      }
       return await scrollPage(action.x || 0, action.y || 0);
 
     case 'navigate':
@@ -53,6 +61,18 @@ export async function executeAction(action: Action): Promise<any> {
 
     case 'click_text':
       return await clickByText(action.text!);
+
+    case 'type_text':
+      // Type at current cursor position (for computer use)
+      return await typeAtCursor(action.text!);
+
+    case 'screenshot':
+      // Screenshot is handled by the extension, just acknowledge
+      return { success: true, message: 'Screenshot captured by extension' };
+
+    case 'done':
+      // Task completed
+      return { success: true, message: 'Task completed' };
 
     default:
       throw new Error(`Unknown action: ${(action as any).action}`);
@@ -125,6 +145,73 @@ async function scrollPage(x: number, y: number): Promise<void> {
   });
   await wait(500);
   console.log(`Scrolled to: ${x}, ${y}`);
+}
+
+async function scrollByDirection(direction: string, amount: number, x?: number, y?: number): Promise<void> {
+  // Convert scroll amount (wheel ticks) to pixels - typically 100px per tick
+  const scrollPixels = amount * 100;
+
+  // If coordinates provided, scroll at that element position
+  if (x !== undefined && y !== undefined) {
+    const element = document.elementFromPoint(x, y);
+    if (element && element !== document.body && element !== document.documentElement) {
+      // Try to scroll the element itself if it's scrollable
+      const scrollable = findScrollableParent(element as HTMLElement);
+      if (scrollable) {
+        switch (direction.toLowerCase()) {
+          case 'up':
+            scrollable.scrollBy({ top: -scrollPixels, behavior: 'smooth' });
+            break;
+          case 'down':
+            scrollable.scrollBy({ top: scrollPixels, behavior: 'smooth' });
+            break;
+          case 'left':
+            scrollable.scrollBy({ left: -scrollPixels, behavior: 'smooth' });
+            break;
+          case 'right':
+            scrollable.scrollBy({ left: scrollPixels, behavior: 'smooth' });
+            break;
+        }
+        await wait(500);
+        console.log(`Scrolled ${direction} by ${amount} ticks on element at (${x}, ${y})`);
+        return;
+      }
+    }
+  }
+
+  // Default: scroll the window
+  switch (direction.toLowerCase()) {
+    case 'up':
+      window.scrollBy({ top: -scrollPixels, behavior: 'smooth' });
+      break;
+    case 'down':
+      window.scrollBy({ top: scrollPixels, behavior: 'smooth' });
+      break;
+    case 'left':
+      window.scrollBy({ left: -scrollPixels, behavior: 'smooth' });
+      break;
+    case 'right':
+      window.scrollBy({ left: scrollPixels, behavior: 'smooth' });
+      break;
+  }
+  await wait(500);
+  console.log(`Scrolled window ${direction} by ${amount} ticks`);
+}
+
+function findScrollableParent(element: HTMLElement): HTMLElement | null {
+  let current: HTMLElement | null = element;
+  while (current && current !== document.body) {
+    const style = window.getComputedStyle(current);
+    const overflowY = style.overflowY;
+    const overflowX = style.overflowX;
+    if (overflowY === 'scroll' || overflowY === 'auto' || overflowX === 'scroll' || overflowX === 'auto') {
+      if (current.scrollHeight > current.clientHeight || current.scrollWidth > current.clientWidth) {
+        return current;
+      }
+    }
+    current = current.parentElement;
+  }
+  return null;
 }
 
 async function navigate(url: string): Promise<void> {
