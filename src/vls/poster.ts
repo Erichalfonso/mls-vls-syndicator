@@ -262,6 +262,7 @@ export class VLSPoster {
     // Wait for page to fully render
     await new Promise(r => setTimeout(r, 1000));
 
+    console.log(`[VLS] Step 1: Posting as ${listing.listingType === 'Rent' ? 'RENTAL' : 'FOR SALE'} - $${listing.price}`);
     console.log('[VLS] Step 1: Selecting classification...');
     // Select classification (property type) - field name is "list_class"
     const classification = PROPERTY_TYPE_MAP[listing.propertyType] || 'RES';
@@ -275,13 +276,24 @@ export class VLSPoster {
       if (el) el.click();
     }, selector);
 
-    console.log('[VLS] Step 1: Checking For Sale...');
-    // Select "For Sale" checkbox - field name is "for_sale"
-    const forSaleCheckbox = await page.$('input[type="checkbox"][name="for_sale"]');
-    if (forSaleCheckbox) {
-      const isChecked = await page.evaluate(el => (el as HTMLInputElement).checked, forSaleCheckbox);
-      if (!isChecked) {
-        await forSaleCheckbox.click();
+    // Select "For Sale" or "For Rent" based on listing type
+    if (listing.listingType === 'Rent') {
+      console.log('[VLS] Step 1: Checking For Rent...');
+      const forRentCheckbox = await page.$('input[type="checkbox"][name="for_rent"]');
+      if (forRentCheckbox) {
+        const isChecked = await page.evaluate(el => (el as HTMLInputElement).checked, forRentCheckbox);
+        if (!isChecked) {
+          await forRentCheckbox.click();
+        }
+      }
+    } else {
+      console.log('[VLS] Step 1: Checking For Sale...');
+      const forSaleCheckbox = await page.$('input[type="checkbox"][name="for_sale"]');
+      if (forSaleCheckbox) {
+        const isChecked = await page.evaluate(el => (el as HTMLInputElement).checked, forSaleCheckbox);
+        if (!isChecked) {
+          await forSaleCheckbox.click();
+        }
       }
     }
 
@@ -351,9 +363,24 @@ export class VLSPoster {
 
     console.log('[VLS] Step 2: Filling description...');
     // Property description - field name is "webnote"
+    // Include attribution as required by MLS
+    let description = listing.description || '';
+
+    // Add attribution line for MLS compliance
+    const attributionParts: string[] = [];
+    if (listing.listingAgentName) {
+      attributionParts.push(`Listed by: ${listing.listingAgentName}`);
+    }
+    if (listing.listingOfficeName) {
+      attributionParts.push(listing.listingOfficeName);
+    }
+    if (attributionParts.length > 0) {
+      description += `\n\n${attributionParts.join(' - ')}`;
+    }
+
     const descTextarea = await page.$('textarea[name="webnote"]');
     if (descTextarea) {
-      await descTextarea.type(listing.description || '');
+      await descTextarea.type(description);
     }
 
     console.log('[VLS] Step 2: Complete!');
@@ -370,48 +397,58 @@ export class VLSPoster {
 
     console.log(`[VLS] Uploading ${imagePaths.length} images...`);
 
-    // Navigate directly to the upload page
-    await page.goto(`https://vlshomes.com/members_mobi/ask_multiple.cfm?in_listing=${listingId}`, {
-      waitUntil: 'networkidle2',
-      timeout: 30000,
-    });
-
-    await new Promise(r => setTimeout(r, 1000));
-
     try {
-      // Find the file input (id="get_photos", name="AllFiles", multiple=true)
+      // Navigate to the upload page
+      await page.goto(`https://vlshomes.com/members_mobi/ask_multiple.cfm?in_listing=${listingId}`, {
+        waitUntil: 'networkidle2',
+        timeout: 30000,
+      });
+
+      await new Promise(r => setTimeout(r, 1000));
+
+      // Find the file input (supports multiple files)
       const fileInput = await page.$('input#get_photos');
       if (!fileInput) {
         console.warn('[VLS] File input not found on upload page');
         return;
       }
 
-      // Upload all images at once (the input supports multiple files)
-      console.log('[VLS] Injecting file paths into input...');
+      // Upload ALL images at once (the input has multiple="" attribute)
+      console.log(`[VLS] Selecting ${imagePaths.length} files for upload...`);
       await fileInput.uploadFile(...imagePaths);
-      console.log('[VLS] Files injected successfully');
+      console.log(`[VLS] All ${imagePaths.length} files selected successfully`);
 
-      // Wait a moment for the files to be processed
-      await new Promise(r => setTimeout(r, 1000));
+      // Wait a moment for files to be processed
+      await new Promise(r => setTimeout(r, 2000));
+
+      // The submit button is hidden by default (display: none)
+      // Make it visible first, then click it
+      await page.evaluate(() => {
+        const submitBtn = document.querySelector('input[type="submit"]') as HTMLElement;
+        if (submitBtn) {
+          submitBtn.style.display = 'inline-block';
+        }
+      });
 
       // Find and click the submit/upload button
       const submitBtn = await page.$('input[type="submit"]');
       if (submitBtn) {
-        console.log('[VLS] Clicking upload submit button...');
         await Promise.all([
           submitBtn.click(),
-          page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {
-            console.log('[VLS] Upload navigation timeout, checking result...');
+          page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {
+            console.log('[VLS] Upload navigation timeout, continuing...');
           }),
         ]);
-        console.log('[VLS] Images uploaded successfully');
+        console.log(`[VLS] All ${imagePaths.length} images uploaded successfully`);
       } else {
         console.warn('[VLS] Submit button not found on upload page');
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.warn('[VLS] Photo upload failed:', message);
+      console.error(`[VLS] Failed to upload images:`, message);
     }
+
+    console.log(`[VLS] Finished uploading images`);
   }
 
   /**

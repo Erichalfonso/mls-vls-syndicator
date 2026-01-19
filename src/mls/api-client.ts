@@ -5,7 +5,7 @@
  * https://api.bridgedataoutput.com/api/v2/OData/{mlsId}/Property
  */
 
-import type { MLSListing, MLSCredentials, SearchCriteria, PropertyType } from './types';
+import type { MLSListing, MLSCredentials, SearchCriteria, PropertyType, ListingType } from './types';
 
 const BRIDGE_API_BASE = 'https://api.bridgedataoutput.com/api/v2/OData';
 
@@ -59,6 +59,8 @@ export interface BridgeProperty {
   ListAgentFullName?: string;
   ListAgentDirectPhone?: string;
   ListAgentEmail?: string;
+  ListOfficeName?: string;
+  ListOfficePhone?: string;
   ListingContractDate?: string;
   ModificationTimestamp?: string;
   Media?: BridgeMedia[];
@@ -74,9 +76,14 @@ export interface BridgeProperty {
 export interface BridgeMedia {
   MediaKey: string;
   MediaURL: string;
-  MediaType: string;
+  MediaCategory?: string;  // "Photo", "Video", etc.
+  MimeType?: string;       // "image/jpeg", etc.
   Order: number;
   ShortDescription?: string;
+  MediaObjectID?: string;
+  ResourceRecordKey?: string;
+  ResourceName?: string;
+  ClassName?: string;
 }
 
 export class BridgeAPIClient {
@@ -185,23 +192,9 @@ export class BridgeAPIClient {
     params.set('access_token', serverToken);
     params.set('$top', limit.toString());
 
-    // Select specific fields to reduce payload
-    params.set('$select', [
-      'ListingKey', 'ListingId', 'ListPrice',
-      'StreetNumber', 'StreetName', 'StreetSuffix', 'UnitNumber',
-      'City', 'StateOrProvince', 'PostalCode',
-      'BedroomsTotal', 'BathroomsTotalInteger', 'BathroomsFull', 'BathroomsHalf',
-      'LivingArea', 'LotSizeSquareFeet', 'YearBuilt',
-      'PropertyType', 'PropertySubType', 'PublicRemarks',
-      'StandardStatus', 'MlsStatus',
-      'ListAgentFullName', 'ListAgentDirectPhone', 'ListAgentEmail',
-      'ListingContractDate', 'ModificationTimestamp',
-      'GarageSpaces', 'PoolPrivateYN', 'WaterfrontYN',
-      'SubdivisionName', 'CountyOrParish', 'TaxAnnualAmount', 'AssociationFee',
-    ].join(','));
-
-    // Expand media to get image URLs
-    params.set('$expand', 'Media($top=10)');
+    // Note: For Miami dataset (miamire), Media array is embedded in Property response
+    // Do NOT use $select as it excludes the Media array
+    // Do NOT use $expand as Media is already included in the Property resource
 
     // Build filter
     const filter = this.buildFilter(criteria);
@@ -226,6 +219,15 @@ export class BridgeAPIClient {
 
       const data: BridgeAPIResponse = await response.json();
       console.log(`[Bridge API] Received ${data.value?.length || 0} listings`);
+
+      // Debug: Log first listing's Media structure
+      if (data.value && data.value.length > 0) {
+        const firstListing = data.value[0];
+        console.log(`[Bridge API] First listing ${firstListing.ListingId} has Media:`, firstListing.Media ? `${firstListing.Media.length} items` : 'undefined');
+        if (firstListing.Media && firstListing.Media.length > 0) {
+          console.log(`[Bridge API] Sample Media item:`, JSON.stringify(firstListing.Media[0], null, 2));
+        }
+      }
 
       // Convert Bridge properties to our MLSListing format
       return this.convertListings(data.value || []);
@@ -258,32 +260,39 @@ export class BridgeAPIClient {
       address += ` #${prop.UnitNumber}`;
     }
 
-    // Get image URLs from Media - store MediaKeys for later URL construction
+    // Get image URLs from Media array (embedded in Property for Miami dataset)
     const imageUrls: string[] = [];
-    if (prop.Media && prop.Media.length > 0) {
-      // Sort by Order and get URLs
-      const sortedMedia = [...prop.Media].sort((a, b) => (a.Order || 0) - (b.Order || 0));
+    if (prop.Media && Array.isArray(prop.Media) && prop.Media.length > 0) {
+      // Sort by Order and get URLs - filter to photos only
+      const sortedMedia = [...prop.Media]
+        .filter(m => !m.MediaCategory || m.MediaCategory === 'Photo')
+        .sort((a, b) => (a.Order || 0) - (b.Order || 0));
+
       for (const media of sortedMedia) {
         if (media.MediaURL) {
-          // Use direct URL if provided
+          // Use direct CloudFront URL from Bridge
           imageUrls.push(media.MediaURL);
-        } else if (media.MediaKey) {
-          // Construct URL using Bridge API media endpoint with auth
-          // Format: https://api.bridgedataoutput.com/api/v2/OData/{mlsId}/Media('{MediaKey}')/content?access_token={token}
-          const imageUrl = `https://api.bridgedataoutput.com/api/v2/zgateway/media/${media.MediaKey}`;
-          imageUrls.push(imageUrl);
         }
       }
-      console.log(`[Bridge API] Found ${imageUrls.length} images for ${prop.ListingId}`);
+      console.log(`[Bridge API] Found ${imageUrls.length} images for ${prop.ListingId} (total media items: ${prop.Media.length})`);
+      if (imageUrls.length > 0) {
+        console.log(`[Bridge API] First image URL: ${imageUrls[0]}`);
+      }
     } else {
-      console.log(`[Bridge API] No Media array for ${prop.ListingId}`);
+      console.log(`[Bridge API] No Media array for ${prop.ListingId} - Media value:`, prop.Media);
     }
 
     // Calculate total bathrooms
     const bathrooms = (prop.BathroomsFull || 0) + ((prop.BathroomsHalf || 0) * 0.5);
 
-    // Map property type
-    const propertyType = PROPERTY_TYPE_MAP[prop.PropertyType || ''] || 'Other';
+    // Detect if it's a rental based on PropertyType containing "Lease"
+    const rawPropertyType = prop.PropertyType || '';
+    const isRental = rawPropertyType.toLowerCase().includes('lease');
+    const listingType: ListingType = isRental ? 'Rent' : 'Sale';
+
+    // Map property type (strip "Lease" suffix for mapping)
+    const propertyTypeForMapping = rawPropertyType.replace(/\s*Lease$/i, '').trim();
+    const propertyType = PROPERTY_TYPE_MAP[propertyTypeForMapping] || PROPERTY_TYPE_MAP[rawPropertyType] || 'Other';
 
     // Map status
     let status: MLSListing['status'] = 'Active';
@@ -311,11 +320,14 @@ export class BridgeAPIClient {
       lotSize: prop.LotSizeSquareFeet,
       yearBuilt: prop.YearBuilt,
       propertyType,
+      listingType,
       description: prop.PublicRemarks || '',
       imageUrls,
       listingAgentName: prop.ListAgentFullName,
       listingAgentPhone: prop.ListAgentDirectPhone,
       listingAgentEmail: prop.ListAgentEmail,
+      listingOfficeName: prop.ListOfficeName,
+      listingOfficePhone: prop.ListOfficePhone,
       listingDate: prop.ListingContractDate ? new Date(prop.ListingContractDate) : undefined,
       status,
       garage: prop.GarageSpaces,

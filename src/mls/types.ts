@@ -16,11 +16,14 @@ export interface MLSListing {
   lotSize?: number;
   yearBuilt?: number;
   propertyType: PropertyType;
+  listingType: ListingType; // Sale or Rent
   description: string;
   imageUrls: string[];
   listingAgentName?: string;
   listingAgentPhone?: string;
   listingAgentEmail?: string;
+  listingOfficeName?: string;
+  listingOfficePhone?: string;
   listingDate?: Date;
   status: ListingStatus;
   // Additional common MLS fields
@@ -32,6 +35,8 @@ export interface MLSListing {
   taxAmount?: number;
   hoaFee?: number;
 }
+
+export type ListingType = 'Sale' | 'Rent';
 
 export type PropertyType =
   | 'Single Family'
