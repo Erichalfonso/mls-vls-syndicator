@@ -11,13 +11,27 @@ export default function Settings({ settings, onSave }: SettingsProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [showMlsPassword, setShowMlsPassword] = useState(false);
   const [showVlsPassword, setShowVlsPassword] = useState(false);
+  const [showAirtableKey, setShowAirtableKey] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  // Local state for comma-separated text inputs (to allow typing commas)
+  const [citiesText, setCitiesText] = useState(settings.searchCriteria.cities?.join(', ') || '');
+  const [zipCodesText, setZipCodesText] = useState(settings.searchCriteria.zipCodes?.join(', ') || '');
 
   const handleSave = async () => {
     setIsSaving(true);
     setSaveMessage(null);
     try {
-      await onSave(formData);
+      // Parse comma-separated values before saving
+      const updatedFormData = {
+        ...formData,
+        searchCriteria: {
+          ...formData.searchCriteria,
+          cities: citiesText.split(',').map(s => s.trim()).filter(Boolean),
+          zipCodes: zipCodesText.split(',').map(s => s.trim()).filter(Boolean),
+        },
+      };
+      await onSave(updatedFormData);
       setSaveMessage('Settings saved successfully!');
       setTimeout(() => setSaveMessage(null), 3000);
     } catch (error) {
@@ -166,6 +180,81 @@ export default function Settings({ settings, onSave }: SettingsProps) {
       </section>
 
       <section className="settings-section">
+        <h2>Airtable Tracking</h2>
+        <p className="section-description">
+          Track synced listings in Airtable. Create a base with columns: MLS #, Address, Price, Date Synced, VLS Link
+        </p>
+
+        <div className="form-group">
+          <label>Personal Access Token</label>
+          <div className="password-input">
+            <input
+              type={showAirtableKey ? 'text' : 'password'}
+              placeholder="pat..."
+              value={formData.airtableCredentials?.apiKey || ''}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  airtableCredentials: {
+                    ...formData.airtableCredentials!,
+                    apiKey: e.target.value,
+                    baseId: formData.airtableCredentials?.baseId || '',
+                    tableId: formData.airtableCredentials?.tableId || 'Listings',
+                  },
+                })
+              }
+            />
+            <button
+              type="button"
+              className="toggle-password"
+              onClick={() => setShowAirtableKey(!showAirtableKey)}
+            >
+              {showAirtableKey ? '🙈' : '👁️'}
+            </button>
+          </div>
+          <small className="help-text">From airtable.com/create/tokens</small>
+        </div>
+
+        <div className="form-group">
+          <label>Base ID</label>
+          <input
+            type="text"
+            placeholder="app..."
+            value={formData.airtableCredentials?.baseId || ''}
+            onChange={(e) =>
+              setFormData({
+                ...formData,
+                airtableCredentials: {
+                  ...formData.airtableCredentials!,
+                  baseId: e.target.value,
+                },
+              })
+            }
+          />
+          <small className="help-text">Found in the URL: airtable.com/appXXXXXXX/...</small>
+        </div>
+
+        <div className="form-group">
+          <label>Table Name</label>
+          <input
+            type="text"
+            placeholder="Listings"
+            value={formData.airtableCredentials?.tableId || 'Listings'}
+            onChange={(e) =>
+              setFormData({
+                ...formData,
+                airtableCredentials: {
+                  ...formData.airtableCredentials!,
+                  tableId: e.target.value || 'Listings',
+                },
+              })
+            }
+          />
+          <small className="help-text">The name of your table (default: Listings)</small>
+        </div>
+      </section>
+
+      <section className="settings-section">
         <h2>Search Criteria</h2>
         <p className="section-description">
           Filter which listings to fetch from MLS.
@@ -196,16 +285,8 @@ export default function Settings({ settings, onSave }: SettingsProps) {
             <input
               type="text"
               placeholder="Miami, Hialeah, Coral Gables"
-              value={formData.searchCriteria.cities?.join(', ') || ''}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  searchCriteria: {
-                    ...formData.searchCriteria,
-                    cities: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
-                  },
-                })
-              }
+              value={citiesText}
+              onChange={(e) => setCitiesText(e.target.value)}
             />
           </div>
 
@@ -214,16 +295,8 @@ export default function Settings({ settings, onSave }: SettingsProps) {
             <input
               type="text"
               placeholder="33125, 33126, 33127"
-              value={formData.searchCriteria.zipCodes?.join(', ') || ''}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  searchCriteria: {
-                    ...formData.searchCriteria,
-                    zipCodes: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
-                  },
-                })
-              }
+              value={zipCodesText}
+              onChange={(e) => setZipCodesText(e.target.value)}
             />
           </div>
         </div>

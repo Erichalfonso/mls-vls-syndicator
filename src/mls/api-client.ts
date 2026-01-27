@@ -37,8 +37,10 @@ export interface BridgeProperty {
   ListingId: string;
   ListPrice: number;
   StreetNumber?: string;
+  StreetDirPrefix?: string;  // Directional prefix (N, S, E, W, NE, NW, SE, SW)
   StreetName?: string;
   StreetSuffix?: string;
+  StreetDirSuffix?: string;  // Directional suffix (less common)
   UnitNumber?: string;
   City: string;
   StateOrProvince: string;
@@ -71,6 +73,11 @@ export interface BridgeProperty {
   CountyOrParish?: string;
   TaxAnnualAmount?: number;
   AssociationFee?: number;
+  // IDX/Syndication permission fields
+  IDXEntireListingDisplayYN?: boolean;
+  InternetEntireListingDisplayYN?: boolean;
+  SyndicateTo?: string[];
+  MIAMIRE_OkToAdvertiseList?: string;
 }
 
 export interface BridgeMedia {
@@ -98,6 +105,13 @@ export class BridgeAPIClient {
    */
   private buildFilter(criteria: SearchCriteria): string {
     const filters: string[] = [];
+
+    // IMPORTANT: Only fetch rental listings (PropertyType contains 'Lease')
+    filters.push("contains(PropertyType, 'Lease')");
+
+    // Only fetch listings where OK To Advertise starts with 'Yes'
+    // Values can be: 'Yes - Attribution Required', 'Yes - Attribution NOT Required', etc.
+    filters.push("startswith(MIAMIRE_OkToAdvertiseList, 'Yes')");
 
     // Status filter - default to Active
     if (criteria.listingStatus && criteria.listingStatus.length > 0) {
@@ -220,13 +234,39 @@ export class BridgeAPIClient {
       const data: BridgeAPIResponse = await response.json();
       console.log(`[Bridge API] Received ${data.value?.length || 0} listings`);
 
-      // Debug: Log first listing's Media structure
+      // Debug: Log first listing's structure to find IDX/Advertise field names
       if (data.value && data.value.length > 0) {
         const firstListing = data.value[0];
         console.log(`[Bridge API] First listing ${firstListing.ListingId} has Media:`, firstListing.Media ? `${firstListing.Media.length} items` : 'undefined');
         if (firstListing.Media && firstListing.Media.length > 0) {
           console.log(`[Bridge API] Sample Media item:`, JSON.stringify(firstListing.Media[0], null, 2));
         }
+
+        // Debug: Log all fields to find "OK To Advertise" field name
+        const allFields = Object.keys(firstListing);
+        console.log(`[Bridge API] All fields (${allFields.length}):`, allFields.join(', '));
+
+        // Look for IDX/Internet/Advertise related fields
+        const idxFields = allFields.filter(f =>
+          f.toLowerCase().includes('idx') ||
+          f.toLowerCase().includes('internet') ||
+          f.toLowerCase().includes('advertise') ||
+          f.toLowerCase().includes('syndic') ||
+          f.toLowerCase().includes('display')
+        );
+        if (idxFields.length > 0) {
+          console.log(`[Bridge API] IDX/Internet/Advertise fields found:`, idxFields);
+          for (const field of idxFields) {
+            console.log(`[Bridge API]   ${field}:`, (firstListing as any)[field]);
+          }
+        } else {
+          console.log(`[Bridge API] No IDX/Internet/Advertise fields found in response`);
+        }
+
+        // Debug: Show unique OkToAdvertise values across all listings
+        const okToAdvertiseValues = data.value.map((l: any) => l.MIAMIRE_OkToAdvertiseList).filter(Boolean);
+        const uniqueValues = [...new Set(okToAdvertiseValues)];
+        console.log(`[Bridge API] MIAMIRE_OkToAdvertiseList values in response:`, uniqueValues);
       }
 
       // Convert Bridge properties to our MLSListing format
@@ -249,11 +289,13 @@ export class BridgeAPIClient {
    * Convert a single Bridge property to MLSListing
    */
   private convertProperty(prop: BridgeProperty): MLSListing {
-    // Build full address
+    // Build full address (including directional prefix/suffix)
     const addressParts = [
       prop.StreetNumber,
+      prop.StreetDirPrefix,   // e.g., "SW", "NW", "N", "S"
       prop.StreetName,
       prop.StreetSuffix,
+      prop.StreetDirSuffix,   // less common, but some addresses have it
     ].filter(Boolean);
     let address = addressParts.join(' ');
     if (prop.UnitNumber) {
@@ -337,6 +379,8 @@ export class BridgeAPIClient {
       county: prop.CountyOrParish,
       taxAmount: prop.TaxAnnualAmount,
       hoaFee: prop.AssociationFee,
+      // Set attribution required flag based on MLS field
+      attributionRequired: prop.MIAMIRE_OkToAdvertiseList?.toLowerCase().includes('attribution required') || false,
     };
   }
 

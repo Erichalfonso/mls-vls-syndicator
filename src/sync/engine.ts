@@ -11,16 +11,19 @@ import type {
   SearchCriteria,
   MLSCredentials,
   VLSCredentials,
+  AirtableCredentials,
 } from '../mls/types';
 import { v4 as uuidv4 } from 'uuid';
 import { VLSPoster } from '../vls/poster';
 import { ImageDownloader } from '../mls/image-downloader';
 import { BridgeAPIClient } from '../mls/api-client';
+import { AirtableClient } from '../airtable/client';
 import { isListingSynced, recordSyncedListing, logSyncAction } from './database';
 
 export interface SyncEngineConfig {
   mlsCredentials: MLSCredentials;
   vlsCredentials: VLSCredentials;
+  airtableCredentials?: AirtableCredentials;
   searchCriteria: SearchCriteria;
   tempImageDir: string;
   onProgress?: (current: number, total: number, address: string) => void;
@@ -38,6 +41,7 @@ export class SyncEngine {
   private state: SyncEngineState;
   private vlsPoster: VLSPoster | null = null;
   private imageDownloader: ImageDownloader;
+  private airtableClient: AirtableClient | null = null;
 
   constructor(config: SyncEngineConfig) {
     this.config = config;
@@ -47,6 +51,12 @@ export class SyncEngine {
       currentSession: null,
     };
     this.imageDownloader = new ImageDownloader({ tempDir: config.tempImageDir });
+
+    // Initialize Airtable client if credentials provided
+    if (config.airtableCredentials?.apiKey && config.airtableCredentials?.baseId) {
+      this.airtableClient = new AirtableClient(config.airtableCredentials);
+      console.log('[Sync] Airtable tracking enabled');
+    }
   }
 
   /**
@@ -263,6 +273,20 @@ export class SyncEngine {
       listing.city,
       listing.price
     );
+
+    // Record to Airtable if configured
+    if (this.airtableClient) {
+      const vlsLink = vlsId
+        ? `https://vlshomes.com/viewlist.cfm?in_listing=${vlsId}`
+        : '';
+      await this.airtableClient.addListing({
+        mlsNumber: listing.mlsNumber,
+        address: `${listing.address}, ${listing.city}`,
+        price: listing.price,
+        dateSynced: new Date().toISOString().split('T')[0],
+        vlsLink,
+      });
+    }
 
     return vlsId;
   }

@@ -223,6 +223,7 @@ ipcMain.handle('start-sync', async (): Promise<{ success: boolean; error?: strin
         mlsName: '',
       },
       vlsCredentials: settings.vlsCredentials,
+      airtableCredentials: settings.airtableCredentials,
       searchCriteria: settings.searchCriteria || {},
       tempImageDir: tempDir,
       onProgress: (current, total, address) => {

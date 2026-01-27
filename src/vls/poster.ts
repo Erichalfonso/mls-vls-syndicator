@@ -6,7 +6,40 @@
 
 import puppeteer, { Browser, Page } from 'puppeteer';
 import * as path from 'path';
+import * as fs from 'fs';
 import type { MLSListing, VLSCredentials } from '../mls/types';
+
+/**
+ * Find Chrome executable on the system
+ */
+function findChrome(): string | undefined {
+  // Build list of possible Chrome paths
+  const possiblePaths: string[] = [
+    // Standard Windows paths
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  ];
+
+  // Add user-specific paths if environment variables are set
+  if (process.env.LOCALAPPDATA) {
+    possiblePaths.push(`${process.env.LOCALAPPDATA}\\Google\\Chrome\\Application\\chrome.exe`);
+  }
+  if (process.env.USERPROFILE) {
+    possiblePaths.push(`${process.env.USERPROFILE}\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe`);
+  }
+
+  console.log('[VLS] Looking for Chrome in:', possiblePaths);
+
+  for (const chromePath of possiblePaths) {
+    if (chromePath && fs.existsSync(chromePath)) {
+      console.log('[VLS] Found Chrome at:', chromePath);
+      return chromePath;
+    }
+  }
+
+  console.error('[VLS] Chrome not found in any of the expected locations');
+  return undefined;
+}
 
 export interface VLSPosterConfig {
   credentials: VLSCredentials;
@@ -65,9 +98,21 @@ export class VLSPoster {
   async init(): Promise<void> {
     if (this.browser) return;
 
+    const chromePath = findChrome();
+
+    if (!chromePath) {
+      throw new Error(
+        'Chrome not found! Please install Google Chrome from google.com/chrome. ' +
+        'Looked in: C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+      );
+    }
+
+    console.log('[VLS] Using Chrome at:', chromePath);
+
     this.browser = await puppeteer.launch({
       headless: this.config.headless,
       slowMo: this.config.slowMo,
+      executablePath: chromePath,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
 
@@ -316,6 +361,20 @@ export class VLSPoster {
     await page.waitForSelector('input[name="in_st_type"]', { timeout: 5000 });
     await page.type('input[name="in_st_type"]', addressParts.type);
 
+    // Fill unit number if present - try common field names
+    if (addressParts.unit) {
+      console.log('[VLS] Step 1: Filling unit number:', addressParts.unit);
+      // Try different possible field names for unit/apt
+      const unitSelectors = ['input[name="in_unit"]', 'input[name="in_apt"]', 'input[name="unit"]', 'input[name="apt"]'];
+      for (const selector of unitSelectors) {
+        const unitField = await page.$(selector);
+        if (unitField) {
+          await page.type(selector, addressParts.unit);
+          break;
+        }
+      }
+    }
+
     // Fill zip code - field name is "in_zip"
     console.log('[VLS] Step 1: Filling zip code:', listing.zip);
     await page.waitForSelector('input[name="in_zip"]', { timeout: 5000 });
@@ -363,20 +422,18 @@ export class VLSPoster {
 
     console.log('[VLS] Step 2: Filling description...');
     // Property description - field name is "webnote"
-    // Include attribution as required by MLS
     let description = listing.description || '';
 
-    // Add attribution line for MLS compliance
-    const attributionParts: string[] = [];
-    if (listing.listingAgentName) {
-      attributionParts.push(`Listed by: ${listing.listingAgentName}`);
+    // Add attribution for original listing agent/office when required by MLS
+    if (listing.attributionRequired) {
+      const agentName = listing.listingAgentName || 'Listing Agent';
+      const officeName = listing.listingOfficeName || 'Listing Office';
+      description += `\n\nListing courtesy of ${agentName}, ${officeName}`;
+      console.log('[VLS] Step 2: Adding required attribution for original agent/office');
     }
-    if (listing.listingOfficeName) {
-      attributionParts.push(listing.listingOfficeName);
-    }
-    if (attributionParts.length > 0) {
-      description += `\n\n${attributionParts.join(' - ')}`;
-    }
+
+    // Add Maria's contact info
+    description += `\n\nContact: Maria Oduber - My Reality Real Estate Group\nPhone: (786) 340-3222`;
 
     const descTextarea = await page.$('textarea[name="webnote"]');
     if (descTextarea) {
@@ -502,27 +559,59 @@ export class VLSPoster {
   /**
    * Parse address into components
    */
-  private parseAddress(address: string): { number: string; name: string; type: string } {
-    // Basic address parsing (e.g., "123 Main St" -> { number: "123", name: "Main", type: "St" })
-    const parts = address.trim().split(/\s+/);
+  private parseAddress(address: string): { number: string; name: string; type: string; unit: string } {
+    // Extract unit number first (e.g., "#605", "Unit 605", "Apt 5A")
+    let unit = '';
+    let mainAddress = address.trim();
+
+    // Match unit patterns at the end: #605, Unit 605, Apt 5A, etc.
+    const unitMatch = mainAddress.match(/\s+(#|Unit\s*#?|Apt\s*#?|Suite\s*#?)(\S+)$/i);
+    if (unitMatch) {
+      unit = unitMatch[2];
+      mainAddress = mainAddress.slice(0, unitMatch.index).trim();
+    }
+
+    // Common street types
+    const streetTypes = ['St', 'Street', 'Ave', 'Avenue', 'Blvd', 'Boulevard', 'Dr', 'Drive',
+                         'Ln', 'Lane', 'Rd', 'Road', 'Ct', 'Court', 'Pl', 'Place', 'Way',
+                         'Cir', 'Circle', 'Ter', 'Terrace', 'Trl', 'Trail', 'Pkwy', 'Parkway'];
+
+    const parts = mainAddress.split(/\s+/);
 
     if (parts.length >= 3) {
-      return {
-        number: parts[0],
-        name: parts.slice(1, -1).join(' '),
-        type: parts[parts.length - 1],
-      };
+      // Check if last part is a street type
+      const lastPart = parts[parts.length - 1];
+      const isStreetType = streetTypes.some(t => t.toLowerCase() === lastPart.toLowerCase());
+
+      if (isStreetType) {
+        return {
+          number: parts[0],
+          name: parts.slice(1, -1).join(' '),
+          type: lastPart,
+          unit,
+        };
+      } else {
+        // Last part might be part of street name (e.g., "123 NW 5th")
+        return {
+          number: parts[0],
+          name: parts.slice(1).join(' '),
+          type: '',
+          unit,
+        };
+      }
     } else if (parts.length === 2) {
       return {
         number: parts[0],
         name: parts[1],
         type: '',
+        unit,
       };
     } else {
       return {
         number: '',
-        name: address,
+        name: mainAddress,
         type: '',
+        unit,
       };
     }
   }

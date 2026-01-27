@@ -34,6 +34,8 @@ export interface MLSListing {
   county?: string;
   taxAmount?: number;
   hoaFee?: number;
+  // Attribution requirement from MLS
+  attributionRequired?: boolean;
 }
 
 export type ListingType = 'Sale' | 'Rent';
@@ -80,6 +82,13 @@ export interface VLSCredentials {
   password: string;
 }
 
+// Airtable credentials for tracking
+export interface AirtableCredentials {
+  apiKey: string;      // Personal Access Token
+  baseId: string;      // Base ID (starts with "app...")
+  tableId: string;     // Table name (e.g., "Listings")
+}
+
 // Search criteria for fetching listings
 export interface SearchCriteria {
   cities?: string[];
@@ -102,6 +111,7 @@ export interface SearchCriteria {
 export interface AppSettings {
   mlsCredentials?: MLSCredentials;
   vlsCredentials?: VLSCredentials;
+  airtableCredentials?: AirtableCredentials;
   searchCriteria: SearchCriteria;
   autoSync: boolean;
   syncIntervalHours: number;
