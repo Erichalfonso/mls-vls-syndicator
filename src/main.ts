@@ -7,6 +7,7 @@
 import { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage } from 'electron';
 import * as path from 'path';
 import Store from 'electron-store';
+import { autoUpdater } from 'electron-updater';
 import type { AppSettings, SyncSession, SyncResult } from './mls/types';
 import { SyncEngine, SyncEngineConfig } from './sync/engine';
 
@@ -111,10 +112,61 @@ function createTray(): void {
   });
 }
 
+// ============================================
+// Auto Updater Setup
+// ============================================
+function setupAutoUpdater(): void {
+  // Configure auto updater
+  autoUpdater.autoDownload = false; // Don't auto-download, let user decide
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  // Check for updates
+  autoUpdater.checkForUpdates().catch((err) => {
+    console.log('Auto-update check failed:', err.message);
+  });
+
+  // Update available
+  autoUpdater.on('update-available', (info) => {
+    console.log('Update available:', info.version);
+    mainWindow?.webContents.send('update-available', {
+      version: info.version,
+      releaseNotes: info.releaseNotes,
+    });
+  });
+
+  // No update available
+  autoUpdater.on('update-not-available', () => {
+    console.log('App is up to date');
+  });
+
+  // Download progress
+  autoUpdater.on('download-progress', (progress) => {
+    mainWindow?.webContents.send('update-download-progress', {
+      percent: progress.percent,
+      transferred: progress.transferred,
+      total: progress.total,
+    });
+  });
+
+  // Update downloaded
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('Update downloaded:', info.version);
+    mainWindow?.webContents.send('update-downloaded', {
+      version: info.version,
+    });
+  });
+
+  // Error
+  autoUpdater.on('error', (err) => {
+    console.error('Auto-updater error:', err.message);
+  });
+}
+
 // App lifecycle
 app.whenReady().then(() => {
   createWindow();
   createTray();
+  setupAutoUpdater();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -185,6 +237,25 @@ ipcMain.handle('show-notification', async (_, title: string, body: string): Prom
 // Get app version
 ipcMain.handle('get-app-version', async (): Promise<string> => {
   return app.getVersion();
+});
+
+// ============================================
+// Auto Update IPC Handlers
+// ============================================
+
+// Check for updates manually
+ipcMain.handle('check-for-updates', async (): Promise<void> => {
+  autoUpdater.checkForUpdates();
+});
+
+// Download update
+ipcMain.handle('download-update', async (): Promise<void> => {
+  autoUpdater.downloadUpdate();
+});
+
+// Install update (quit and install)
+ipcMain.handle('install-update', async (): Promise<void> => {
+  autoUpdater.quitAndInstall();
 });
 
 // Open external link

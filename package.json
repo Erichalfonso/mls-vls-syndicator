@@ -26,10 +26,17 @@
     "win": {
       "target": "nsis",
       "icon": "assets/icon.png"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Erichalfonso",
+      "repo": "-claude-browser-agent",
+      "releaseType": "release"
     }
   },
   "author": "MLS VLS Syndicator",
   "dependencies": {
+    "electron-updater": "^6.1.0",
     "electron-store": "^8.1.0",
     "puppeteer": "^23.0.0",
     "react": "^18.2.0",

@@ -42,6 +42,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   testVlsLogin: (credentials: { email: string; password: string }): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('test-vls-login', credentials),
 
+  // Auto-update controls
+  checkForUpdates: (): Promise<void> => ipcRenderer.invoke('check-for-updates'),
+  downloadUpdate: (): Promise<void> => ipcRenderer.invoke('download-update'),
+  installUpdate: (): Promise<void> => ipcRenderer.invoke('install-update'),
+
+  // Auto-update events
+  onUpdateAvailable: (callback: (info: { version: string; releaseNotes?: string }) => void): void => {
+    ipcRenderer.on('update-available', (_, info) => callback(info));
+  },
+  onUpdateDownloadProgress: (callback: (progress: { percent: number; transferred: number; total: number }) => void): void => {
+    ipcRenderer.on('update-download-progress', (_, progress) => callback(progress));
+  },
+  onUpdateDownloaded: (callback: (info: { version: string }) => void): void => {
+    ipcRenderer.on('update-downloaded', (_, info) => callback(info));
+  },
+
   // Sync events (from main to renderer)
   onTriggerSync: (callback: () => void): void => {
     ipcRenderer.on('trigger-sync', callback);
@@ -84,6 +100,12 @@ declare global {
       stopSync: () => Promise<void>;
       testSync: () => Promise<{ success: boolean; error?: string }>;
       testVlsLogin: (credentials: { email: string; password: string }) => Promise<{ success: boolean; error?: string }>;
+      checkForUpdates: () => Promise<void>;
+      downloadUpdate: () => Promise<void>;
+      installUpdate: () => Promise<void>;
+      onUpdateAvailable: (callback: (info: { version: string; releaseNotes?: string }) => void) => void;
+      onUpdateDownloadProgress: (callback: (progress: { percent: number; transferred: number; total: number }) => void) => void;
+      onUpdateDownloaded: (callback: (info: { version: string }) => void) => void;
       onTriggerSync: (callback: () => void) => void;
       onSyncProgress: (
         callback: (progress: { current: number; total: number; address: string }) => void

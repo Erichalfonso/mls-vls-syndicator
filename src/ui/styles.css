@@ -373,6 +373,13 @@ body {
 .result-item.skipped .result-icon { color: var(--warning); }
 .result-item.failed .result-icon { color: var(--error); }
 
+.result-mls {
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  min-width: 100px;
+}
+
 .result-address {
   flex: 1;
   font-weight: 500;
@@ -718,4 +725,105 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
+}
+
+/* ============================================
+   Update Notification
+   ============================================ */
+
+.update-notification {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(135deg, var(--bg-card), var(--bg-secondary));
+  border-bottom: 2px solid var(--accent);
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  z-index: 1000;
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.update-icon {
+  font-size: 1.5rem;
+}
+
+.update-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.update-content strong {
+  font-size: 0.95rem;
+}
+
+.update-content span {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.update-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-update {
+  background: var(--accent);
+  color: var(--bg-primary);
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-update:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.btn-dismiss {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-dismiss:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.update-progress-bar {
+  width: 200px;
+  height: 6px;
+  background: var(--bg-primary);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 0.25rem 0;
+}
+
+.update-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--success));
+  transition: width 0.3s ease;
 }
