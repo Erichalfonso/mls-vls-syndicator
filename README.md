@@ -61,12 +61,9 @@ A Windows desktop application that fetches active listings from the Bridge MLS A
 
 ## Screenshots
 
-> **TODO:** Add screenshots of the app UI here.
->
-> Suggested screenshots:
-> - Settings panel with credential fields
-> - Sync in progress with listing count
-> - Results log showing posted/skipped/failed listings
+| Sync Panel | Settings | Sync History |
+|:---:|:---:|:---:|
+| ![Sync Panel](screenshots/sync-panel.png) | ![Settings](screenshots/settings.png) | ![Sync History](screenshots/sync-history.png) |
 
 ---
 
