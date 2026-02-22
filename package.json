@@ -1,7 +1,7 @@
 {
   "name": "mls-vls-syndicator",
   "version": "1.1.0",
-  "description": "Sync MLS listings to VLS Homes automatically",
+  "description": "Desktop application that syndicates MLS real estate listings to VLS Homes automatically using browser automation",
   "main": "dist/main.js",
   "scripts": {
     "dev": "vite",
@@ -30,11 +30,26 @@
     "publish": {
       "provider": "github",
       "owner": "Erichalfonso",
-      "repo": "-claude-browser-agent",
+      "repo": "mls-vls-syndicator",
       "releaseType": "release"
     }
   },
-  "author": "MLS VLS Syndicator",
+  "author": "Erich Alfonso",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Erichalfonso/mls-vls-syndicator"
+  },
+  "homepage": "https://github.com/Erichalfonso/mls-vls-syndicator#readme",
+  "keywords": [
+    "mls",
+    "real-estate",
+    "automation",
+    "electron",
+    "puppeteer",
+    "vls",
+    "listing-syndication"
+  ],
   "dependencies": {
     "electron-updater": "^6.1.0",
     "electron-store": "^8.1.0",

@@ -208,6 +208,7 @@ export default function SyncPanel({
                 <span className="result-icon">
                   {result.status === 'success' ? '✓' : result.status === 'skipped' ? '⊘' : '✗'}
                 </span>
+                <span className="result-mls">{result.mlsNumber}</span>
                 <span className="result-address">{result.address}</span>
                 <span className="result-message">{result.message}</span>
               </div>

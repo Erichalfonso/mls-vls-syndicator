@@ -1,6 +1,12 @@
 node_modules/
 dist/
+release/
+temp/
+logs/
+nul
+.claude/
 *.log
+*.blockmap
 .env
 .DS_Store
 *.swp
