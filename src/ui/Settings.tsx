@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { AppSettings, PropertyType } from '../mls/types';
+import type { AppSettings } from '../mls/types';
 
 interface SettingsProps {
   settings: AppSettings;
@@ -40,15 +40,6 @@ export default function Settings({ settings, onSave }: SettingsProps) {
       setIsSaving(false);
     }
   };
-
-  const propertyTypes: PropertyType[] = [
-    'Single Family',
-    'Condo',
-    'Townhouse',
-    'Multi-Family',
-    'Land',
-    'Commercial',
-  ];
 
   return (
     <div className="settings">
@@ -402,33 +393,6 @@ export default function Settings({ settings, onSave }: SettingsProps) {
           </div>
         </div>
 
-        <div className="form-group">
-          <label>Property Types</label>
-          <div className="checkbox-group">
-            {propertyTypes.map((type) => (
-              <label key={type} className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={formData.searchCriteria.propertyTypes?.includes(type) || false}
-                  onChange={(e) => {
-                    const current = formData.searchCriteria.propertyTypes || [];
-                    const updated = e.target.checked
-                      ? [...current, type]
-                      : current.filter((t) => t !== type);
-                    setFormData({
-                      ...formData,
-                      searchCriteria: {
-                        ...formData.searchCriteria,
-                        propertyTypes: updated.length > 0 ? updated : undefined,
-                      },
-                    });
-                  }}
-                />
-                {type}
-              </label>
-            ))}
-          </div>
-        </div>
       </section>
 
       <section className="settings-section">

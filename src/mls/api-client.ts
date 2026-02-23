@@ -171,24 +171,6 @@ export class BridgeAPIClient {
       filters.push(`LivingArea le ${criteria.maxSqft}`);
     }
 
-    // Property types
-    if (criteria.propertyTypes && criteria.propertyTypes.length > 0) {
-      // Map our property types back to RESO types
-      const resoTypes: string[] = [];
-      for (const pt of criteria.propertyTypes) {
-        for (const [resoType, ourType] of Object.entries(PROPERTY_TYPE_MAP)) {
-          if (ourType === pt) {
-            resoTypes.push(resoType);
-          }
-        }
-      }
-      if (resoTypes.length > 0) {
-        // Use contains() instead of eq so "Condominium" matches "Condominium Lease" etc.
-        const typeFilters = resoTypes.map(t => `contains(PropertyType, '${t}')`);
-        filters.push(`(${typeFilters.join(' or ')})`);
-      }
-    }
-
     return filters.join(' and ');
   }
 
