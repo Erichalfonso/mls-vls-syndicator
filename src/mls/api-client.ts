@@ -183,7 +183,8 @@ export class BridgeAPIClient {
         }
       }
       if (resoTypes.length > 0) {
-        const typeFilters = resoTypes.map(t => `PropertyType eq '${t}'`);
+        // Use contains() instead of eq so "Condominium" matches "Condominium Lease" etc.
+        const typeFilters = resoTypes.map(t => `contains(PropertyType, '${t}')`);
         filters.push(`(${typeFilters.join(' or ')})`);
       }
     }
