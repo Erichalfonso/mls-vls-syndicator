@@ -34,6 +34,31 @@ let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 
+// ============================================
+// Forward main process logs to renderer DevTools
+// ============================================
+const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
+const originalConsoleWarn = console.warn;
+
+function forwardLog(level: string, ...args: any[]): void {
+  const message = args.map(a => typeof a === 'string' ? a : JSON.stringify(a, null, 2)).join(' ');
+  mainWindow?.webContents.send('main-log', { level, message, timestamp: new Date().toISOString() });
+}
+
+console.log = (...args: any[]) => {
+  originalConsoleLog(...args);
+  forwardLog('log', ...args);
+};
+console.error = (...args: any[]) => {
+  originalConsoleError(...args);
+  forwardLog('error', ...args);
+};
+console.warn = (...args: any[]) => {
+  originalConsoleWarn(...args);
+  forwardLog('warn', ...args);
+};
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 900,

@@ -35,6 +35,18 @@ export default function App() {
     }
     loadData();
 
+    // Forward main process logs to DevTools console
+    window.electronAPI.onMainLog((entry) => {
+      const prefix = `[Main ${entry.timestamp.split('T')[1]?.slice(0, 8) || ''}]`;
+      if (entry.level === 'error') {
+        console.error(prefix, entry.message);
+      } else if (entry.level === 'warn') {
+        console.warn(prefix, entry.message);
+      } else {
+        console.log(prefix, entry.message);
+      }
+    });
+
     // Listen for sync trigger from tray
     window.electronAPI.onTriggerSync(() => {
       setActiveTab('sync');

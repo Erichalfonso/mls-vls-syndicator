@@ -81,6 +81,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onSyncError: (callback: (error: string) => void): void => {
     ipcRenderer.on('sync-error', (_, error) => callback(error));
   },
+
+  // Main process log forwarding — shows in DevTools console
+  onMainLog: (callback: (entry: { level: string; message: string; timestamp: string }) => void): void => {
+    ipcRenderer.on('main-log', (_, entry) => callback(entry));
+  },
 });
 
 // Type declaration for TypeScript
@@ -113,6 +118,7 @@ declare global {
       onSyncResult: (callback: (result: SyncResult) => void) => void;
       onSyncComplete: (callback: (session: SyncSession) => void) => void;
       onSyncError: (callback: (error: string) => void) => void;
+      onMainLog: (callback: (entry: { level: string; message: string; timestamp: string }) => void) => void;
     };
   }
 }
